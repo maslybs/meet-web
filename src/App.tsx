@@ -9,21 +9,14 @@ interface TokenResponse {
   identity: string;
 }
 
-const DEMO_SERVER = 'wss://demo.livekit.cloud';
-const PLAYGROUND_URL = 'https://livekit.io/api/playground';
-
-function randomSuffix(length = 3) {
-  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
-}
+const storedNameKey = 'camera-mother-name';
 
 function generateRoomName() {
-  const bases = ['Вітальня', 'Студія', 'Світлиця', 'Майстерня', 'Тераса'];
-  const base = bases[Math.floor(Math.random() * bases.length)];
-  const year = new Date().getFullYear().toString().slice(-2);
-  return `${base}-${year}${randomSuffix(2)}`;
+  const adjectives = ['Затишна', 'Сонячна', 'Тиха', 'Весела', 'Світла'];
+  const nouns = ['кімната', 'зустріч', 'майстерня', 'студія', 'гостина'];
+  const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+  return `${adjective} ${noun}`;
 }
 
 async function requestToken(room: string, name: string) {
@@ -46,8 +39,15 @@ export default function App() {
   const isViewer = Boolean(urlRoom);
 
   const [roomName, setRoomName] = useState(() => urlRoom ?? generateRoomName());
-  const [participantName, setParticipantName] = useState('');
-  const [serverUrl, setServerUrl] = useState(DEMO_SERVER);
+  const [participantName, setParticipantName] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem(storedNameKey) ?? '';
+  });
+  const [isEditingName, setIsEditingName] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = window.localStorage.getItem(storedNameKey) ?? '';
+    return stored.trim() === '';
+  });
   const [autoDevices, setAutoDevices] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,27 +55,43 @@ export default function App() {
   const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
+    if (participantName) {
+      window.localStorage.setItem(storedNameKey, participantName);
+    }
+  }, [participantName]);
+
+  useEffect(() => {
+    if (participantName.trim() === '') {
+      setIsEditingName(true);
+    }
+  }, [participantName]);
+
+  useEffect(() => {
     if (!isViewer) {
-      setServerUrl(DEMO_SERVER);
       setCredentials(null);
       setStatus(null);
-      setParticipantName('');
     }
   }, [isViewer]);
 
   useEffect(() => {
     setCredentials(null);
     setStatus(null);
-  }, [roomName]);
+    if (!isViewer && typeof window !== 'undefined') {
+      const url = new URL(window.location.origin);
+      url.searchParams.set('room', roomName);
+      window.history.replaceState(null, '', url.toString());
+    }
+  }, [roomName, isViewer]);
 
   const shareLink = useMemo(() => {
     if (typeof window === 'undefined') return '';
-    const url = new URL(window.location.href);
+    const url = new URL(window.location.origin);
     url.searchParams.set('room', roomName);
     return url.toString();
   }, [roomName]);
 
-  const readyToConnect = useMemo(() => roomName.trim() !== '' && participantName.trim() !== '' && serverUrl.trim() !== '', [roomName, participantName, serverUrl]);
+  const readyToConnect = useMemo(() => roomName.trim() !== '' && participantName.trim() !== '', [roomName, participantName]);
+  const showNameInput = useMemo(() => isEditingName || participantName.trim() === '', [isEditingName, participantName]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -106,11 +122,11 @@ export default function App() {
   return (
     <main className="layout" data-lk-theme="default">
       <section className="card" aria-live="polite">
-        <h1>{isViewer ? 'Приєднатися до кімнати' : 'Створити кімнату LiveKit'}</h1>
+        <h1>{isViewer ? 'Приєднатися до трансляції' : 'Створити трансляцію'}</h1>
         <p>
           {isViewer
-            ? 'Введіть своє ім’я та натисніть “Підключитися”, щоб говорити з ведучим.'
-            : 'Оберіть зручну назву кімнати, поділіться посиланням із асистентом і вкажіть своє ім’я.'}
+            ? 'Введіть своє ім’я та натисніть “Підключитися”.'
+            : 'Оберіть зручну назву трасляції, поділіться посиланням або назвою із асистентом і вкажіть своє ім’я.'}
         </p>
 
         <form className="inputs" onSubmit={handleSubmit}>
@@ -138,27 +154,32 @@ export default function App() {
             </button>
           )}
 
-          <label>
-            Ваше імʼя
-            <input
-              type="text"
-              required
-              value={participantName}
-              placeholder="Наприклад, Олексій"
-              onChange={(ev) => setParticipantName(ev.target.value)}
-            />
-          </label>
-
-          <label>
-            LiveKit URL
-            <input
-              type="url"
-              required
-              value={serverUrl}
-              placeholder="wss://..."
-              onChange={(ev) => setServerUrl(ev.target.value)}
-            />
-          </label>
+          {showNameInput ? (
+            <label>
+              Ваше імʼя
+              <input
+                type="text"
+                required
+                value={participantName}
+                placeholder="Наприклад, Олексій"
+                onChange={(ev) => setParticipantName(ev.target.value)}
+                onBlur={() => {
+                  if (participantName.trim() !== '') {
+                    setIsEditingName(false);
+                  }
+                }}
+              />
+            </label>
+          ) : (
+            <div className="name-display">
+              <span>
+                Ви підключаєтеся як <strong>{participantName}</strong>
+              </span>
+              <button type="button" className="secondary" onClick={() => setIsEditingName(true)}>
+                Змінити імʼя
+              </button>
+            </div>
+          )}
 
           <label className="inline">
             <input
@@ -190,27 +211,12 @@ export default function App() {
 
         {status && <p>{status}</p>}
         {error && <p className="error">{error}</p>}
-
-        <details>
-          <summary>Як отримати токен?</summary>
-          <ol>
-            <li>У LiveKit Cloud створіть API ключ і секрет.</li>
-            <li>
-              Сформуйте токен у{' '}
-              <a href={PLAYGROUND_URL} target="_blank" rel="noopener noreferrer">
-                Playground
-              </a>{' '}
-              або власним бекендом (приклад функції див. у `functions/api/token.ts`).
-            </li>
-            <li>Вставте URL і токен у форму та натисніть “Підключитися”.</li>
-          </ol>
-        </details>
       </section>
 
-      <section className="room-container" aria-label="Кімната відеозвʼязку">
-        {credentials ? (
+      {credentials && (
+        <section className="room-container" aria-label="Кімната відеозвʼязку">
           <LiveKitRoom
-            serverUrl={credentials.serverUrl || serverUrl}
+            serverUrl={credentials.serverUrl}
             token={credentials.token}
             connect
             audio={autoDevices}
@@ -220,10 +226,8 @@ export default function App() {
           >
             <VideoConference />
           </LiveKitRoom>
-        ) : (
-          <div className="placeholder">Трансляція зʼявиться після підключення.</div>
-        )}
-      </section>
+        </section>
+      )}
     </main>
   );
 }
