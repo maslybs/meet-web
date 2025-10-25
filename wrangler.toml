@@ -1,0 +1,7 @@
+name = "camera-mother"
+pages_build_output_dir = "dist"
+
+[vars]
+# LIVEKIT_API_KEY = ""
+# LIVEKIT_API_SECRET = ""
+# LIVEKIT_URL = "https://your-project.livekit.cloud"
