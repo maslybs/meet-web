@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.js",
+    "dev:client": "vite --host 0.0.0.0",
+    "dev:server": "wrangler pages dev dist --local --port 8787 --log-level=warn",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "wrangler pages deploy dist"
