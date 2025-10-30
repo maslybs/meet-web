@@ -32,6 +32,39 @@ interface ContactEntry {
   lastConnected: number;
 }
 
+async function ensureAgentDispatch(room: string) {
+  try {
+    const response = await fetch('/api/dispatch', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ room }),
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || `Не вдалося активувати асистента (код ${response.status}).`);
+    }
+  } catch (error) {
+    console.warn('ensureAgentDispatch failed', error);
+    throw error;
+  }
+}
+
+async function releaseAgentDispatch(room: string) {
+  try {
+    const response = await fetch('/api/dispatch', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ room }),
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      console.warn('Не вдалося видалити диспетчер асистента:', message || response.status);
+    }
+  } catch (error) {
+    console.warn('releaseAgentDispatch failed', error);
+  }
+}
+
 function extractDisplayName(identity: string) {
   const trimmed = identity.trim();
   if (!trimmed) {
@@ -265,6 +298,24 @@ export default function App() {
     }
   }, [roomName, isViewer]);
 
+  useEffect(() => {
+    if (!credentials) {
+      return;
+    }
+    const handleUnload = () => {
+      void releaseAgentDispatch(roomName);
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', handleUnload);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('beforeunload', handleUnload);
+      }
+      void releaseAgentDispatch(roomName);
+    };
+  }, [credentials, roomName]);
+
   const shareLink = useMemo(() => {
     if (typeof window === 'undefined') return '';
     const url = new URL(window.location.origin);
@@ -330,6 +381,8 @@ export default function App() {
     try {
       setConnecting(true);
       setError(null);
+      setStatus('Активую асистента…');
+      await ensureAgentDispatch(roomName);
       setStatus('Отримую токен…');
       const tokenResp = await requestToken(roomName, participantName.trim());
       setCredentials(tokenResp);
@@ -345,6 +398,7 @@ export default function App() {
   const handleDisconnect = () => {
     setCredentials(null);
     setStatus('З’єднання завершено.');
+    void releaseAgentDispatch(roomName);
   };
 
   const liveKitOptions = useMemo(
