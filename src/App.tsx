@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState, useId } from 'react';
 import {
   DisconnectButton,
   GridLayout,
@@ -65,6 +65,16 @@ function describeCamera(device: MediaDeviceInfo) {
   return isEnvironmentCamera(device) ? 'Основна камера' : 'Інша камера';
 }
 
+function detectMobileViewport() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  const userAgent =
+    typeof navigator !== 'undefined' ? navigator.userAgent || navigator.vendor || '' : '';
+  const uaMatch = /Mobi|Android|iPhone|iPad|Mobile|Silk/.test(userAgent);
+  return uaMatch || window.innerWidth <= 768;
+}
+
 async function ensureAgentDispatch(room: string, metadata: AgentMetadata) {
   try {
     const response = await fetch('/api/dispatch', {
@@ -118,9 +128,11 @@ async function requestToken(room: string, name: string) {
 export default function App() {
   const search =
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const initialRoom = search.get('room')?.trim() ?? '';
+  const queryRoom = search.get('room')?.trim() ?? '';
+  const configuredRoom = (import.meta.env.VITE_DEFAULT_ROOM ?? '').trim();
+  const initialRoom = queryRoom || configuredRoom;
 
-  const [roomName, setRoomName] = useState(() => (initialRoom ? initialRoom : ''));
+  const [roomName, setRoomName] = useState(() => initialRoom);
   const [isCreator, setIsCreator] = useState(() => !initialRoom);
   const [participantName, setParticipantName] = useState(() => {
     if (typeof window === 'undefined') return '';
@@ -180,9 +192,10 @@ export default function App() {
     [],
   );
 
-  const needsLlmToken = isCreator;
+  const showLlmTokenField = isCreator;
+  const requireLlmToken = showLlmTokenField;
   const readyToConnect =
-    roomName.trim() !== '' && participantName.trim() !== '' && (!needsLlmToken || llmToken.trim() !== '');
+    roomName.trim() !== '' && participantName.trim() !== '' && (!requireLlmToken || llmToken.trim() !== '');
 
   const connectButtonText = connecting ? 'Зачекайте…' : isCreator ? 'Почати трансляцію' : 'Підключитися';
 
@@ -199,7 +212,11 @@ export default function App() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!readyToConnect) {
-      setError(needsLlmToken ? 'Вкажіть ім’я та LLM токен.' : 'Вкажіть своє ім’я.');
+      if (requireLlmToken && llmToken.trim() === '') {
+        setError('Додайте LLM токен для нової зустрічі.');
+      } else {
+        setError('Вкажіть своє ім’я.');
+      }
       return;
     }
 
@@ -215,7 +232,7 @@ export default function App() {
         roomName: trimmedRoom,
         participantName: trimmedName,
       };
-      if (trimmedToken) {
+      if (showLlmTokenField && trimmedToken) {
         metadata.llmToken = trimmedToken;
       }
       await ensureAgentDispatch(trimmedRoom, metadata);
@@ -239,7 +256,7 @@ export default function App() {
   }, []);
 
   return (
-    <main className="layout" data-lk-theme="default">
+    <main className={`layout${credentials ? ' layout-room-active' : ''}`} data-lk-theme="default">
       {!credentials && (
         <section className="card" aria-live="polite">
           <h1>{!roomName ? 'Створити трансляцію' : 'Вітаю'}</h1>
@@ -256,8 +273,8 @@ export default function App() {
           ) : (
             <>
               <p>
-                Вашу кімнату для зустрічі створено.<br/>Якщо потрібно ви можете змінити ім’я: {needsLlmToken ? 'LLM токен і ' : ''}
-                Натисніть кнопку, щоб підключитися.
+                Вашу кімнату для зустрічі створено.<br />
+                Вкажіть своє імʼя{showLlmTokenField ? ', додайте LLM токен і натисніть кнопку, щоб підключитися.' : ' і натисніть кнопку, щоб підключитися.'}
               </p>
 
               {isCreator && shareLink && (
@@ -281,24 +298,23 @@ export default function App() {
                   />
                 </label>
 
-                {needsLlmToken && (
-                  <label>
-                    LLM API токен для ШІ асистента
-                    <input
-                      type="text"
-                      required
-                      value={llmToken}
-                      placeholder="Вставте токен вашого асистента"
-                      onChange={(event) => setLlmToken(event.target.value)}
-                      aria-describedby="llm-token-hint"
-                    />
-                  </label>
-                )}
-
-                {needsLlmToken && (
-                  <small id="llm-token-hint" className="hint">
-                    Токен збережеться в браузері й автоматично передаватиметься ШІ асистенту.
-                  </small>
+                {showLlmTokenField && (
+                  <>
+                    <label>
+                      LLM API токен для ШІ асистента
+                      <input
+                        type="text"
+                        value={llmToken}
+                        placeholder="Вставте токен вашого асистента"
+                        onChange={(event) => setLlmToken(event.target.value)}
+                        aria-describedby="llm-token-hint"
+                      />
+                    </label>
+                    <small id="llm-token-hint" className="hint">
+                      Токен збережеться в браузері і передаватиметься асистенту. Для нової зустрічі він потрібен, щоб
+                      агент міг допомагати учасникам.
+                    </small>
+                  </>
                 )}
 
                 <div className="actions">
@@ -323,6 +339,7 @@ export default function App() {
             connect
             audio
             video
+            participantName={participantName.trim() || undefined}
             options={liveKitOptions}
             onDisconnected={handleDisconnect}
             style={{ height: '100%', width: '100%' }}
@@ -335,7 +352,13 @@ export default function App() {
   );
 }
 
-function CameraSwitchButton() {
+function CameraSwitchButton({
+  descriptionId,
+  onAvailabilityChange,
+}: {
+  descriptionId: string;
+  onAvailabilityChange?: (available: boolean) => void;
+}) {
   const room = useRoomContext();
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [activeDeviceId, setActiveDeviceId] = useState<string | null>(null);
@@ -401,9 +424,14 @@ function CameraSwitchButton() {
     () => devices.find((device) => device.deviceId === activeDeviceId) ?? null,
     [devices, activeDeviceId],
   );
+  const hasMultipleCameras = devices.length > 1;
+
+  useEffect(() => {
+    onAvailabilityChange?.(hasMultipleCameras);
+  }, [onAvailabilityChange, hasMultipleCameras]);
 
   const handleSwitch = useCallback(async () => {
-    if (!room || devices.length <= 1 || pending) {
+    if (!room || !hasMultipleCameras || pending) {
       return;
     }
     const currentIndex = devices.findIndex((device) => device.deviceId === activeDeviceId);
@@ -426,8 +454,12 @@ function CameraSwitchButton() {
   const ariaLabel = activeDevice
     ? `Перемкнути камеру. Використовується ${describeCamera(activeDevice)}`
     : 'Перемкнути камеру';
-  const disabled = !room || devices.length <= 1 || pending;
+  const disabled = !room || !hasMultipleCameras || pending;
   const title = activeDevice ? `Зараз використовується: ${describeCamera(activeDevice)}` : undefined;
+
+  if (!hasMultipleCameras) {
+    return null;
+  }
 
   return (
     <button
@@ -437,6 +469,7 @@ function CameraSwitchButton() {
       disabled={disabled}
       aria-label={ariaLabel}
       title={title}
+      aria-describedby={descriptionId}
     >
       {buttonText}
     </button>
@@ -451,6 +484,14 @@ function UkrainianConference({ onLeave }: { onLeave: () => void }) {
     ],
     { updateOnlyOn: [RoomEvent.ActiveSpeakersChanged], onlySubscribed: false },
   );
+  const isMobile = useIsMobile();
+  const [canSwitchCamera, setCanSwitchCamera] = useState(false);
+  const unmuteHintId = useId();
+  const micHintId = useId();
+  const camHintId = useId();
+  const switchHintId = useId();
+  const shareHintId = useId();
+  const leaveHintId = useId();
 
   return (
     <div className="ua-conference">
@@ -461,27 +502,84 @@ function UkrainianConference({ onLeave }: { onLeave: () => void }) {
         </GridLayout>
       </div>
       <div className="ua-controls">
-        <StartMediaButton className="ua-button" data-variant="primary">
+        <ul className="sr-only" aria-label="Опис кнопок керування конференцією">
+          <li id={unmuteHintId}>
+            Увімкнути звук: надає браузеру доступ до аудіо, щоб ви могли чути інших учасників.
+          </li>
+          <li id={micHintId}>Мікрофон: вмикає або вимикає ваш голос під час дзвінка.</li>
+          <li id={camHintId}>Камера: показує або приховує ваше відео.</li>
+          {canSwitchCamera && <li id={switchHintId}>Перемкнути камеру: вибирає іншу камеру вашого пристрою.</li>}
+          {!isMobile && (
+            <li id={shareHintId}>
+              Показати екран: передає зображення вашого екрана співрозмовнику (доступно лише на компʼютері).
+            </li>
+          )}
+          <li id={leaveHintId}>Завершення сеансу: завершує трансляцію й вимикає всі пристрої.</li>
+        </ul>
+        <StartMediaButton
+          className="ua-button"
+          data-variant="primary"
+          aria-describedby={unmuteHintId}
+          aria-label="Увімкнути звук і дозволити відтворення аудіо"
+        >
           Увімкнути звук
         </StartMediaButton>
-        <TrackToggle source={Track.Source.Microphone} className="ua-button">
+        <TrackToggle
+          source={Track.Source.Microphone}
+          className="ua-button"
+          aria-describedby={micHintId}
+          aria-label="Увімкнути або вимкнути мікрофон"
+        >
           Мікрофон
         </TrackToggle>
-        <TrackToggle source={Track.Source.Camera} className="ua-button">
+        <TrackToggle
+          source={Track.Source.Camera}
+          className="ua-button"
+          aria-describedby={camHintId}
+          aria-label="Увімкнути або вимкнути камеру"
+        >
           Камера
         </TrackToggle>
-        <CameraSwitchButton />
-        <TrackToggle
-          source={Track.Source.ScreenShare}
-          className="ua-button"
-          captureOptions={{ audio: true, selfBrowserSurface: 'include' }}
+        <CameraSwitchButton descriptionId={switchHintId} onAvailabilityChange={setCanSwitchCamera} />
+        {!isMobile && (
+          <TrackToggle
+            source={Track.Source.ScreenShare}
+            className="ua-button"
+            captureOptions={{ audio: true, selfBrowserSurface: 'include' }}
+            aria-describedby={shareHintId}
+            aria-label="Почати або зупинити показ екрана"
+          >
+            Показати екран
+          </TrackToggle>
+        )}
+        <DisconnectButton
+          className="ua-button danger"
+          stopTracks
+          onClick={onLeave}
+          aria-describedby={leaveHintId}
+          aria-label="Завершити трансляцію"
         >
-          Показати екран
-        </TrackToggle>
-        <DisconnectButton className="ua-button danger" onClick={onLeave}>
-          Вийти
+          Завершення сеансу
         </DisconnectButton>
       </div>
     </div>
   );
+}
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState<boolean>(() => detectMobileViewport());
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      setIsMobile(detectMobileViewport());
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  return isMobile;
 }
