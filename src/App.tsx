@@ -237,100 +237,80 @@ export default function App() {
 
   return (
     <main className="layout" data-lk-theme="default">
-      <section className="card" aria-live="polite">
-        <h1>
-          {!roomName ? 'Створити трансляцію' : credentials ? 'Трансляція активна' : 'Підготовка трансляції'}
-        </h1>
+      {!credentials && (
+        <section className="card" aria-live="polite">
+          <h1>{!roomName ? 'Створити трансляцію' : 'Підготовка трансляції'}</h1>
 
-        {!roomName ? (
-          <>
-            <p>Натисніть нижче, щоб створити нову трансляцію і запросити асистента.</p>
-            <div className="actions">
-              <button type="button" onClick={handleCreateRoom}>
-                Створити трансляцію
-              </button>
-            </div>
-          </>
-        ) : credentials ? (
-          <div className="connected-panel">
-            <p>
-              Трансляція у кімнаті <strong>{roomName}</strong> активна. Якщо потрібно завершити, натисніть кнопку
-              нижче.
-            </p>
-            {isCreator && shareLink && (
-              <div className="share-block">
-                <span>Посилання для асистента:</span>
-                <div className="share-link" aria-live="polite">
-                  {shareLink}
-                </div>
+          {!roomName ? (
+            <>
+              <p>Натисніть нижче, щоб створити нову трансляцію і запросити асистента.</p>
+              <div className="actions">
+                <button type="button" onClick={handleCreateRoom}>
+                  Створити трансляцію
+                </button>
               </div>
-            )}
-            <div className="actions">
-              <button type="button" onClick={handleDisconnect}>
-                Завершити трансляцію
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <p>
-              Ви готуєте кімнату <strong>{roomName}</strong>. Вкажіть ім’я, {needsLlmToken ? 'LLM токен і ' : ''}
-              натисніть кнопку, щоб підключитися.
-            </p>
+            </>
+          ) : (
+            <>
+              <p>
+                Ви готуєте кімнату <strong>{roomName}</strong>. Вкажіть ім’я, {needsLlmToken ? 'LLM токен і ' : ''}
+                натисніть кнопку, щоб підключитися.
+              </p>
 
-            {isCreator && shareLink && (
-              <div className="share-block">
-                <span>Посилання для асистента:</span>
-                <div className="share-link" aria-live="polite">
-                  {shareLink}
+              {isCreator && shareLink && (
+                <div className="share-block">
+                  <span>Посилання для асистента:</span>
+                  <div className="share-link" aria-live="polite">
+                    {shareLink}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <form className="inputs" onSubmit={handleSubmit}>
-              <label>
-                Ваше імʼя
-                <input
-                  type="text"
-                  required
-                  value={participantName}
-                  placeholder="Наприклад, Олексій"
-                  onChange={(event) => setParticipantName(event.target.value)}
-                />
-              </label>
-
-              {needsLlmToken && (
+              <form className="inputs" onSubmit={handleSubmit}>
                 <label>
-                  LLM API токен
+                  Ваше імʼя
                   <input
                     type="text"
                     required
-                    value={llmToken}
-                    placeholder="Вставте токен вашого асистента"
-                    onChange={(event) => setLlmToken(event.target.value)}
-                    aria-describedby="llm-token-hint"
+                    value={participantName}
+                    placeholder="Наприклад, Олексій"
+                    onChange={(event) => setParticipantName(event.target.value)}
                   />
                 </label>
-              )}
 
-              {needsLlmToken && (
-                <small id="llm-token-hint" className="hint">
-                  Токен збережеться в браузері й автоматично передаватиметься асистенту.
-                </small>
-              )}
+                {needsLlmToken && (
+                  <label>
+                    LLM API токен
+                    <input
+                      type="text"
+                      required
+                      value={llmToken}
+                      placeholder="Вставте токен вашого асистента"
+                      onChange={(event) => setLlmToken(event.target.value)}
+                      aria-describedby="llm-token-hint"
+                    />
+                  </label>
+                )}
 
-              <div className="actions">
-                <button type="submit" disabled={connecting}>
-                  {connectButtonText}
-                </button>
-              </div>
-            </form>
-          </>
-        )}
+                {needsLlmToken && (
+                  <small id="llm-token-hint" className="hint">
+                    Токен збережеться в браузері й автоматично передаватиметься асистенту.
+                  </small>
+                )}
 
-        {status && <p className="status-message">{status}</p>}
-        {error && <p className="error">{error}</p>}
-      </section>
+                <div className="actions">
+                  <button type="submit" disabled={connecting}>
+                    {connectButtonText}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
+
+          {status && <p className="status-message">{status}</p>}
+          {error && <p className="error">{error}</p>}
+        </section>
+      )}
 
       {credentials && (
         <section className="room-container" aria-label="Кімната відеозвʼязку">
@@ -503,4 +483,3 @@ function UkrainianConference({ onLeave }: { onLeave: () => void }) {
     </div>
   );
 }
-
