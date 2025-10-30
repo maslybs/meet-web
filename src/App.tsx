@@ -239,11 +239,11 @@ export default function App() {
     <main className="layout" data-lk-theme="default">
       {!credentials && (
         <section className="card" aria-live="polite">
-          <h1>{!roomName ? 'Створити трансляцію' : 'Підготовка трансляції'}</h1>
+          <h1>{!roomName ? 'Створити трансляцію' : 'Вітаю'}</h1>
 
           {!roomName ? (
             <>
-              <p>Натисніть нижче, щоб створити нову трансляцію і запросити асистента.</p>
+              <p>Натисніть нижче, щоб створити нову трансляцію і запросити людину-асистента.</p>
               <div className="actions">
                 <button type="button" onClick={handleCreateRoom}>
                   Створити трансляцію
@@ -253,7 +253,7 @@ export default function App() {
           ) : (
             <>
               <p>
-                Ви готуєте кімнату <strong>{roomName}</strong>. Вкажіть ім’я, {needsLlmToken ? 'LLM токен і ' : ''}
+                Вашу кімнату для зустрічі створено. Вкажіть ім’я, {needsLlmToken ? 'LLM токен і ' : ''}
                 натисніть кнопку, щоб підключитися.
               </p>
 
@@ -280,7 +280,7 @@ export default function App() {
 
                 {needsLlmToken && (
                   <label>
-                    LLM API токен
+                    LLM API токен для ШІ асистента
                     <input
                       type="text"
                       required
@@ -294,7 +294,7 @@ export default function App() {
 
                 {needsLlmToken && (
                   <small id="llm-token-hint" className="hint">
-                    Токен збережеться в браузері й автоматично передаватиметься асистенту.
+                    Токен збережеться в браузері й автоматично передаватиметься ШІ асистенту.
                   </small>
                 )}
 
