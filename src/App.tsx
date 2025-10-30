@@ -72,7 +72,10 @@ async function ensureAgentDispatch(room: string, metadata: AgentMetadata) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         room,
-        metadata: JSON.stringify(metadata),
+        metadata:
+          metadata && Object.keys(metadata).length > 0
+            ? JSON.stringify(metadata)
+            : undefined,
       }),
     });
     if (!response.ok) {
@@ -320,7 +323,6 @@ export default function App() {
             connect
             audio
             video
-            participantName={participantName.trim() || undefined}
             options={liveKitOptions}
             onDisconnected={handleDisconnect}
             style={{ height: '100%', width: '100%' }}
@@ -476,7 +478,7 @@ function UkrainianConference({ onLeave }: { onLeave: () => void }) {
         >
           Показати екран
         </TrackToggle>
-        <DisconnectButton className="ua-button danger" stopTracks onClick={onLeave}>
+        <DisconnectButton className="ua-button danger" onClick={onLeave}>
           Вийти
         </DisconnectButton>
       </div>

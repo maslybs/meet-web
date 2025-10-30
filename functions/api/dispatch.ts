@@ -189,7 +189,14 @@ async function readPayload(request: Request) {
   if (request.method === 'GET' || request.method === 'HEAD') {
     const url = new URL(request.url);
     const room = url.searchParams.get('room');
-    return { room, metadata: url.searchParams.get('metadata') };
+    const rawMetadata = url.searchParams.get('metadata');
+    return {
+      room,
+      metadata:
+        rawMetadata && rawMetadata.trim() && rawMetadata.trim() !== '{}' && rawMetadata.trim() !== 'null'
+          ? rawMetadata.trim()
+          : undefined,
+    };
   }
 
   const contentType = request.headers.get('content-type') ?? '';
@@ -197,7 +204,12 @@ async function readPayload(request: Request) {
     return {};
   }
   try {
-    return (await request.json()) as { room?: string; metadata?: string };
+    const payload = (await request.json()) as { room?: string; metadata?: string | null };
+    const rawMetadata = typeof payload.metadata === 'string' ? payload.metadata : undefined;
+    const metadata = rawMetadata && rawMetadata.trim() && rawMetadata.trim() !== '{}' && rawMetadata.trim() !== 'null'
+      ? rawMetadata.trim()
+      : undefined;
+    return { room: payload.room, metadata };
   } catch {
     return {};
   }
