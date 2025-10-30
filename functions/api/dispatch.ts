@@ -5,6 +5,19 @@ interface Env {
   LIVEKIT_AGENT_NAME?: string;
 }
 
+interface DispatchContext {
+  baseUrl: string;
+  headers: Record<string, string>;
+}
+
+type AgentDispatchState = {
+  jobs?: Array<Record<string, unknown>>;
+  createdAt?: string | number | null;
+  deletedAt?: string | number | null;
+};
+
+type AgentDispatch = { agentName?: string; id?: string; state?: AgentDispatchState };
+
 const encoder = new TextEncoder();
 
 const base64url = (source: string | ArrayBuffer) => {
@@ -68,17 +81,24 @@ async function parseJson<T>(res: Response): Promise<T> {
   }
 }
 
-async function ensureDispatch(env: Env, room: string, agentName: string) {
+async function buildDispatchContext(env: Env, room: string): Promise<DispatchContext> {
   const baseUrl = toHttpUrl(env.LIVEKIT_URL);
   const token = await createRoomAdminJwt(env, room);
   const headers = {
     'content-type': 'application/json',
     Authorization: `Bearer ${token}`,
   };
+  return { baseUrl, headers };
+}
 
-  const listRes = await fetch(`${baseUrl}/twirp/livekit.AgentDispatchService/ListDispatch`, {
+async function listAgentDispatch(
+  context: DispatchContext,
+  room: string,
+  agentName: string,
+): Promise<AgentDispatch | null> {
+  const listRes = await fetch(`${context.baseUrl}/twirp/livekit.AgentDispatchService/ListDispatch`, {
     method: 'POST',
-    headers,
+    headers: context.headers,
     body: JSON.stringify({ room }),
   });
 
@@ -87,21 +107,33 @@ async function ensureDispatch(env: Env, room: string, agentName: string) {
     throw new Error(errBody || `ListDispatch failed with status ${listRes.status}`);
   }
 
-  if (listRes.ok) {
-    const data = await parseJson<{ agentDispatches?: Array<{ agentName?: string; id?: string }> }>(listRes);
-    const existing = data.agentDispatches?.find((dispatch) => dispatch.agentName === agentName);
-    if (existing) {
-      return existing;
-    }
+  if (!listRes.ok) {
+    return null;
   }
 
-  const createRes = await fetch(`${baseUrl}/twirp/livekit.AgentDispatchService/CreateDispatch`, {
+  const data = await parseJson<{ agentDispatches?: AgentDispatch[] }>(listRes);
+  return data.agentDispatches?.find((dispatch) => dispatch.agentName === agentName) ?? null;
+}
+
+async function createAgentDispatch(
+  context: DispatchContext,
+  room: string,
+  agentName: string,
+  metadata?: string,
+) {
+  const payload: Record<string, unknown> = {
+    agentName,
+    room,
+  };
+
+  if (metadata && metadata.trim()) {
+    payload.metadata = metadata;
+  }
+
+  const createRes = await fetch(`${context.baseUrl}/twirp/livekit.AgentDispatchService/CreateDispatch`, {
     method: 'POST',
-    headers,
-    body: JSON.stringify({
-      agentName,
-      room,
-    }),
+    headers: context.headers,
+    body: JSON.stringify(payload),
   });
 
   if (!createRes.ok) {
@@ -113,16 +145,11 @@ async function ensureDispatch(env: Env, room: string, agentName: string) {
 }
 
 async function removeDispatch(env: Env, room: string, agentName: string) {
-  const baseUrl = toHttpUrl(env.LIVEKIT_URL);
-  const token = await createRoomAdminJwt(env, room);
-  const headers = {
-    'content-type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  };
+  const context = await buildDispatchContext(env, room);
 
-  const listRes = await fetch(`${baseUrl}/twirp/livekit.AgentDispatchService/ListDispatch`, {
+  const listRes = await fetch(`${context.baseUrl}/twirp/livekit.AgentDispatchService/ListDispatch`, {
     method: 'POST',
-    headers,
+    headers: context.headers,
     body: JSON.stringify({ room }),
   });
 
@@ -135,16 +162,16 @@ async function removeDispatch(env: Env, room: string, agentName: string) {
     return { removed: 0 };
   }
 
-  const data = await parseJson<{ agentDispatches?: Array<{ agentName?: string; id?: string }> }>(listRes);
+  const data = await parseJson<{ agentDispatches?: AgentDispatch[] }>(listRes);
   const matches = (data.agentDispatches ?? []).filter(
     (dispatch) => dispatch.agentName === agentName && dispatch.id,
   );
 
   await Promise.all(
     matches.map((dispatch) =>
-      fetch(`${baseUrl}/twirp/livekit.AgentDispatchService/DeleteDispatch`, {
+      fetch(`${context.baseUrl}/twirp/livekit.AgentDispatchService/DeleteDispatch`, {
         method: 'POST',
-        headers,
+        headers: context.headers,
         body: JSON.stringify({ room, dispatchId: dispatch.id }),
       }).then(async (res) => {
         if (!res.ok && res.status !== 404) {
@@ -191,14 +218,34 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     return new Response('Method Not Allowed', { status: 405 });
   }
 
-  const { room } = await readPayload(request);
+  const { room, metadata } = await readPayload(request);
   if (!room) {
     return new Response('Missing required room parameter', { status: 400 });
   }
 
   try {
     if (method === 'POST') {
-      const dispatch = await ensureDispatch(env, room, agentName);
+      const context = await buildDispatchContext(env, room);
+      const existing = await listAgentDispatch(context, room, agentName);
+      if (existing) {
+        const jobCount = existing.state?.jobs?.length ?? 0;
+        const deleted = Boolean(existing.state?.deletedAt);
+        if (jobCount > 0 && !deleted) {
+          return Response.json({ status: 'ok', dispatch: existing, reused: true });
+        }
+
+        if (existing.id) {
+          await fetch(`${context.baseUrl}/twirp/livekit.AgentDispatchService/DeleteDispatch`, {
+            method: 'POST',
+            headers: context.headers,
+            body: JSON.stringify({ room, dispatchId: existing.id }),
+          }).catch((err) => {
+            console.warn('Failed to delete stale dispatch', err);
+          });
+        }
+      }
+
+      const dispatch = await createAgentDispatch(context, room, agentName, metadata ?? undefined);
       return Response.json({ status: 'ok', dispatch });
     }
 

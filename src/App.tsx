@@ -10,7 +10,7 @@ import {
   useRoomContext,
   useTracks,
 } from '@livekit/components-react';
-import { RemoteParticipant, Room, RoomEvent, Track, facingModeFromDeviceLabel } from 'livekit-client';
+import { Room, RoomEvent, Track, facingModeFromDeviceLabel } from 'livekit-client';
 import '@livekit/components-styles';
 import './style.css';
 
@@ -20,60 +20,27 @@ interface TokenResponse {
   identity: string;
 }
 
+interface AgentMetadata {
+  roomName: string;
+  participantName: string;
+  llmToken?: string;
+}
+
 const storedNameKey = 'camera-mother-name';
-const storedContactsKey = 'camera-mother-contacts';
-const fixedRoomName = 'my-room';
+const storedLlmTokenKey = 'camera-mother-llm-token';
 
-interface ContactEntry {
-  pairId: string;
-  selfName: string;
-  peerName: string;
-  lastRoom: string;
-  lastConnected: number;
+function randomSuffix(length = 6) {
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) {
+    const bytes = new Uint8Array(length);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
+  }
+  return Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
 }
 
-async function ensureAgentDispatch(room: string) {
-  try {
-    const response = await fetch('/api/dispatch', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ room }),
-    });
-    if (!response.ok) {
-      const message = await response.text();
-      throw new Error(message || `Не вдалося активувати асистента (код ${response.status}).`);
-    }
-  } catch (error) {
-    console.warn('ensureAgentDispatch failed', error);
-    throw error;
-  }
-}
-
-function extractDisplayName(identity: string) {
-  const trimmed = identity.trim();
-  if (!trimmed) {
-    return '';
-  }
-  const parts = trimmed.split('-');
-  if (parts.length <= 1) {
-    return trimmed;
-  }
-  const possibleSuffix = parts[parts.length - 1];
-  if (/^[0-9A-Z]{4}$/.test(possibleSuffix)) {
-    return parts.slice(0, -1).join('-');
-  }
-  return trimmed;
-}
-
-function normalizeNameForId(name: string) {
-  return name.trim().toLowerCase();
-}
-
-function makePairId(a: string, b: string) {
-  const parts = [normalizeNameForId(a), normalizeNameForId(b)].sort((left, right) =>
-    left.localeCompare(right, 'uk'),
-  );
-  return parts.join('__');
+function generateRoomName() {
+  return `room-${randomSuffix(6).toLowerCase()}`;
 }
 
 function isEnvironmentCamera(device: MediaDeviceInfo) {
@@ -90,36 +57,32 @@ function isEnvironmentCamera(device: MediaDeviceInfo) {
   return keywords.some((keyword) => normalized.includes(keyword));
 }
 
-function selectPreferredCamera(
-  devices: MediaDeviceInfo[],
-  activeDeviceId?: string,
-): MediaDeviceInfo | undefined {
-  const candidates = devices.filter(
-    (device) =>
-      device.kind === 'videoinput' &&
-      device.deviceId &&
-      device.deviceId !== 'default' &&
-      device.deviceId !== 'communications',
-  );
-
-  if (candidates.length === 0) {
-    return undefined;
+function describeCamera(device: MediaDeviceInfo) {
+  const label = (device.label ?? '').trim();
+  if (label) {
+    return label;
   }
+  return isEnvironmentCamera(device) ? 'Основна камера' : 'Інша камера';
+}
 
-  const environmentDevices = candidates.filter((device) => isEnvironmentCamera(device));
-  if (environmentDevices.length === 0) {
-    return undefined;
-  }
-
-  if (activeDeviceId) {
-    const different = environmentDevices.find((device) => device.deviceId !== activeDeviceId);
-    if (different) {
-      return different;
+async function ensureAgentDispatch(room: string, metadata: AgentMetadata) {
+  try {
+    const response = await fetch('/api/dispatch', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        room,
+        metadata: JSON.stringify(metadata),
+      }),
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || `Не вдалося активувати асистента (код ${response.status}).`);
     }
-    return undefined;
+  } catch (error) {
+    console.warn('ensureAgentDispatch failed', error);
+    throw error;
   }
-
-  return environmentDevices[0];
 }
 
 async function requestToken(room: string, name: string) {
@@ -150,221 +113,60 @@ async function requestToken(room: string, name: string) {
 }
 
 export default function App() {
-  const search = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const initialRoom = search.get('room');
+  const search =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const initialRoom = search.get('room')?.trim() ?? '';
 
-  const [isViewer, setIsViewer] = useState(() => Boolean(initialRoom));
-  const roomName = fixedRoomName;
+  const [roomName, setRoomName] = useState(() => (initialRoom ? initialRoom : ''));
+  const [isCreator, setIsCreator] = useState(() => !initialRoom);
   const [participantName, setParticipantName] = useState(() => {
     if (typeof window === 'undefined') return '';
     return window.localStorage.getItem(storedNameKey) ?? '';
   });
-  const [isEditingName, setIsEditingName] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    const stored = window.localStorage.getItem(storedNameKey) ?? '';
-    return stored.trim() === '';
+  const [llmToken, setLlmToken] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem(storedLlmTokenKey) ?? '';
   });
-  const [autoDevices, setAutoDevices] = useState(true);
+  const [credentials, setCredentials] = useState<TokenResponse | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [credentials, setCredentials] = useState<TokenResponse | null>(null);
   const [connecting, setConnecting] = useState(false);
-  const [contacts, setContacts] = useState<ContactEntry[]>(() => {
-    if (typeof window === 'undefined') return [];
-    const raw = window.localStorage.getItem(storedContactsKey);
-    if (!raw) return [];
-    try {
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed
-        .map((item) => {
-          if (!item || typeof item !== 'object') return null;
-          const lastConnected =
-            typeof (item as { lastConnected?: number }).lastConnected === 'number'
-              ? (item as { lastConnected: number }).lastConnected
-              : 0;
-
-          if (typeof (item as { pairId?: string }).pairId === 'string') {
-            const selfName =
-              typeof (item as { selfName?: string }).selfName === 'string'
-                ? (item as { selfName: string }).selfName.trim()
-                : '';
-            const peerName =
-              typeof (item as { peerName?: string }).peerName === 'string'
-                ? (item as { peerName: string }).peerName.trim()
-                : '';
-            const lastRoom =
-              typeof (item as { lastRoom?: string }).lastRoom === 'string'
-                ? (item as { lastRoom: string }).lastRoom.trim()
-                : '';
-            if (!selfName || !peerName) return null;
-            const pairId =
-              (item as { pairId: string }).pairId || makePairId(selfName, peerName);
-            return { pairId, selfName, peerName, lastRoom, lastConnected } as ContactEntry;
-          }
-
-          // Legacy shape support
-          const legacyName =
-            typeof (item as { name?: string }).name === 'string'
-              ? (item as { name: string }).name.trim()
-              : '';
-          const legacyRoom =
-            typeof (item as { room?: string }).room === 'string'
-              ? (item as { room: string }).room.trim()
-              : '';
-          if (!legacyName || !legacyRoom) return null;
-          const storedSelf =
-            typeof window !== 'undefined'
-              ? (window.localStorage.getItem(storedNameKey) ?? '').trim()
-              : '';
-          if (!storedSelf) return null;
-          return {
-            pairId: makePairId(storedSelf, legacyName),
-            selfName: storedSelf,
-            peerName: legacyName,
-            lastRoom: legacyRoom,
-            lastConnected,
-          } as ContactEntry;
-        })
-        .filter((x): x is ContactEntry => Boolean(x))
-        .sort((a, b) => b.lastConnected - a.lastConnected);
-    } catch {
-      return [];
-    }
-  });
 
   useEffect(() => {
-    if (participantName) {
-      window.localStorage.setItem(storedNameKey, participantName);
-    }
-  }, [participantName]);
-
-  useEffect(() => {
-    if (participantName.trim() === '') {
-      setIsEditingName(true);
+    if (typeof window === 'undefined') return;
+    if (participantName.trim()) {
+      window.localStorage.setItem(storedNameKey, participantName.trim());
+    } else {
+      window.localStorage.removeItem(storedNameKey);
     }
   }, [participantName]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(
-        storedContactsKey,
-        JSON.stringify(
-          contacts.map((contact) => ({
-            pairId: contact.pairId,
-            selfName: contact.selfName,
-            peerName: contact.peerName,
-            lastRoom: contact.lastRoom,
-            lastConnected: contact.lastConnected,
-          })),
-        ),
-      );
-    } catch {
-      // ignore storage errors
+    if (llmToken.trim()) {
+      window.localStorage.setItem(storedLlmTokenKey, llmToken.trim());
+    } else {
+      window.localStorage.removeItem(storedLlmTokenKey);
     }
-  }, [contacts]);
+  }, [llmToken]);
 
   useEffect(() => {
-    if (!isViewer) {
-      setCredentials(null);
-      setStatus(null);
-    }
-  }, [isViewer]);
-
-  useEffect(() => {
-    setCredentials(null);
-    setStatus(null);
-    if (!isViewer && typeof window !== 'undefined') {
-      const url = new URL(window.location.origin);
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (!roomName) {
+      url.searchParams.delete('room');
+    } else {
       url.searchParams.set('room', roomName);
-      window.history.replaceState(null, '', url.toString());
     }
-  }, [roomName, isViewer]);
+    window.history.replaceState(null, '', url.toString());
+  }, [roomName]);
 
   const shareLink = useMemo(() => {
-    if (typeof window === 'undefined') return '';
-    const url = new URL(window.location.origin);
+    if (!roomName || typeof window === 'undefined') return '';
+    const url = new URL(window.location.href);
     url.searchParams.set('room', roomName);
     return url.toString();
   }, [roomName]);
-
-  const readyToConnect = useMemo(() => participantName.trim() !== '', [participantName]);
-  const showNameInput = useMemo(() => isEditingName || participantName.trim() === '', [isEditingName, participantName]);
-
-  const switchToHostMode = useCallback(() => {
-    setIsViewer(false);
-    if (typeof window !== 'undefined') {
-      const url = new URL(window.location.origin);
-      window.history.replaceState(null, '', url.toString());
-    }
-  }, []);
-
-  const handleContactSeen = useCallback(
-    ({ peerName, selfName, room }: { peerName: string; selfName: string; room: string }) => {
-      const trimmedPeer = peerName.trim();
-      const trimmedSelf = selfName.trim();
-      const trimmedRoom = room.trim();
-      if (!trimmedPeer || !trimmedSelf) {
-        return;
-      }
-      const pairId = makePairId(trimmedSelf, trimmedPeer);
-      setContacts((prev) => {
-        const filtered = prev.filter((contact) => contact.pairId !== pairId);
-        const updated: ContactEntry = {
-          pairId,
-          selfName: trimmedSelf,
-          peerName: trimmedPeer,
-          lastRoom: trimmedRoom || '',
-          lastConnected: Date.now(),
-        };
-        return [updated, ...filtered].sort((a, b) => b.lastConnected - a.lastConnected);
-      });
-    },
-    [],
-  );
-
-  const handleSelectContact = useCallback(
-    (contact: ContactEntry) => {
-      switchToHostMode();
-      if (contact.selfName.trim()) {
-        setParticipantName(contact.selfName.trim());
-        setIsEditingName(false);
-      }
-      setError(null);
-      setStatus(null);
-      setCredentials(null);
-    },
-    [switchToHostMode, setParticipantName, setIsEditingName],
-  );
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!readyToConnect) {
-      setError('Заповніть усі поля.');
-      return;
-    }
-    try {
-      setConnecting(true);
-      setError(null);
-      setStatus('Активую асистента…');
-      await ensureAgentDispatch(roomName);
-      setStatus('Отримую токен…');
-      const tokenResp = await requestToken(roomName, participantName.trim());
-      setCredentials(tokenResp);
-      setStatus('Підключено до кімнати.');
-    } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'Не вдалося отримати токен.');
-    } finally {
-      setConnecting(false);
-    }
-  };
-
-  const handleDisconnect = () => {
-    setCredentials(null);
-    setStatus('З’єднання завершено.');
-  };
 
   const liveKitOptions = useMemo(
     () => ({
@@ -375,17 +177,87 @@ export default function App() {
     [],
   );
 
+  const needsLlmToken = isCreator;
+  const readyToConnect =
+    roomName.trim() !== '' && participantName.trim() !== '' && (!needsLlmToken || llmToken.trim() !== '');
+
+  const connectButtonText = connecting ? 'Зачекайте…' : isCreator ? 'Почати трансляцію' : 'Підключитися';
+
+  const handleCreateRoom = useCallback(() => {
+    const generated = generateRoomName();
+    setRoomName(generated);
+    setIsCreator(true);
+    setCredentials(null);
+    setStatus(null);
+    setError(null);
+    setConnecting(false);
+  }, []);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!readyToConnect) {
+      setError(needsLlmToken ? 'Вкажіть ім’я та LLM токен.' : 'Вкажіть своє ім’я.');
+      return;
+    }
+
+    const trimmedRoom = roomName.trim();
+    const trimmedName = participantName.trim();
+    const trimmedToken = llmToken.trim();
+
+    try {
+      setConnecting(true);
+      setError(null);
+      setStatus('Активую асистента…');
+      const metadata: AgentMetadata = {
+        roomName: trimmedRoom,
+        participantName: trimmedName,
+      };
+      if (trimmedToken) {
+        metadata.llmToken = trimmedToken;
+      }
+      await ensureAgentDispatch(trimmedRoom, metadata);
+      setStatus('Отримую токен…');
+      const tokenResp = await requestToken(trimmedRoom, trimmedName);
+      setCredentials(tokenResp);
+      setStatus('Трансляція активна.');
+    } catch (err) {
+      console.error(err);
+      setCredentials(null);
+      setStatus(null);
+      setError(err instanceof Error ? err.message : 'Не вдалося отримати токен.');
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleDisconnect = useCallback(() => {
+    setCredentials(null);
+    setStatus('З’єднання завершено.');
+  }, []);
+
   return (
     <main className="layout" data-lk-theme="default">
       <section className="card" aria-live="polite">
-        <h1>{isViewer ? 'Приєднатися до трансляції' : 'Створити трансляцію'}</h1>
-        {credentials ? (
+        <h1>
+          {!roomName ? 'Створити трансляцію' : credentials ? 'Трансляція активна' : 'Підготовка трансляції'}
+        </h1>
+
+        {!roomName ? (
+          <>
+            <p>Натисніть нижче, щоб створити нову трансляцію і запросити асистента.</p>
+            <div className="actions">
+              <button type="button" onClick={handleCreateRoom}>
+                Створити трансляцію
+              </button>
+            </div>
+          </>
+        ) : credentials ? (
           <div className="connected-panel">
             <p>
-              Трансляція активна у кімнаті <strong>{roomName}</strong>. Поділіться назвою або
-              посиланням, щоб запросити асистента.
+              Трансляція у кімнаті <strong>{roomName}</strong> активна. Якщо потрібно завершити, натисніть кнопку
+              нижче.
             </p>
-            {!isViewer && (
+            {isCreator && shareLink && (
               <div className="share-block">
                 <span>Посилання для асистента:</span>
                 <div className="share-link" aria-live="polite">
@@ -402,101 +274,62 @@ export default function App() {
         ) : (
           <>
             <p>
-              {isViewer
-                ? showNameInput
-                  ? 'Введіть своє ім’я та натисніть “Підключитися”.'
-                  : 'Натисніть “Підключитися”, щоб приєднатися.'
-                : showNameInput
-                ? 'Оберіть зручну назву трансляції, поділіться посиланням або назвою із асистентом і вкажіть своє ім’я.'
-                : 'Оберіть зручну назву трансляції, поділіться посиланням або назвою із асистентом і натисніть “Підключитися”.'}
+              Ви готуєте кімнату <strong>{roomName}</strong>. Вкажіть ім’я, {needsLlmToken ? 'LLM токен і ' : ''}
+              натисніть кнопку, щоб підключитися.
             </p>
+
+            {isCreator && shareLink && (
+              <div className="share-block">
+                <span>Посилання для асистента:</span>
+                <div className="share-link" aria-live="polite">
+                  {shareLink}
+                </div>
+              </div>
+            )}
 
             <form className="inputs" onSubmit={handleSubmit}>
               <label>
-                Назва трансляції
-                <input type="text" required readOnly value={roomName} />
+                Ваше імʼя
+                <input
+                  type="text"
+                  required
+                  value={participantName}
+                  placeholder="Наприклад, Олексій"
+                  onChange={(event) => setParticipantName(event.target.value)}
+                />
               </label>
 
-              {showNameInput ? (
+              {needsLlmToken && (
                 <label>
-                  Ваше імʼя
+                  LLM API токен
                   <input
                     type="text"
                     required
-                    value={participantName}
-                    placeholder="Наприклад, Олексій"
-                    onChange={(ev) => setParticipantName(ev.target.value)}
-                    onBlur={() => {
-                      if (participantName.trim() !== '') {
-                        setIsEditingName(false);
-                      }
-                    }}
+                    value={llmToken}
+                    placeholder="Вставте токен вашого асистента"
+                    onChange={(event) => setLlmToken(event.target.value)}
+                    aria-describedby="llm-token-hint"
                   />
                 </label>
-              ) : (
-                <div className="name-display">
-                  <span>
-                    Ви підключаєтеся як <strong>{participantName}</strong>
-                  </span>
-                  <button type="button" className="secondary" onClick={() => setIsEditingName(true)}>
-                    Змінити імʼя
-                  </button>
-                </div>
               )}
 
-              <label className="inline">
-                <input
-                  type="checkbox"
-                  checked={autoDevices}
-                  onChange={(ev) => setAutoDevices(ev.target.checked)}
-                />
-                Автоматично вмикати камеру та мікрофон
-              </label>
-
-              {!isViewer && (
-                <div className="share-block">
-                  <span>Поділіться посиланням з асистентом:</span>
-                  <div className="share-link" aria-live="polite">
-                    {shareLink}
-                  </div>
-                </div>
+              {needsLlmToken && (
+                <small id="llm-token-hint" className="hint">
+                  Токен збережеться в браузері й автоматично передаватиметься асистенту.
+                </small>
               )}
 
               <div className="actions">
                 <button type="submit" disabled={connecting}>
-                  {connecting ? 'Зачекайте…' : 'Підключитися'}
+                  {connectButtonText}
                 </button>
               </div>
             </form>
           </>
         )}
 
-        {status && <p>{status}</p>}
+        {status && <p className="status-message">{status}</p>}
         {error && <p className="error">{error}</p>}
-
-        <div className="contacts" aria-label="Контакти">
-          <h2>Контакти</h2>
-          {contacts.length === 0 ? (
-            <p className="contacts-empty">Контакти з’являться тут після першої успішної розмови.</p>
-          ) : (
-            <ul className="contact-list">
-              {contacts.map((contact) => (
-                <li key={contact.pairId} className="contact-item">
-                  <div className="contact-meta">
-                    <strong>{contact.peerName}</strong>
-                    <span>{contact.lastRoom || 'Назва кімнати зʼявиться після наступного дзвінка'}</span>
-                    <small className="contact-id">
-                      ID звʼязку: <code>{contact.pairId}</code>
-                    </small>
-                  </div>
-                  <button type="button" className="secondary" onClick={() => handleSelectContact(contact)}>
-                    Почати дзвінок
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
       </section>
 
       {credentials && (
@@ -505,19 +338,13 @@ export default function App() {
             serverUrl={credentials.serverUrl}
             token={credentials.token}
             connect
-            audio={autoDevices}
-            video={autoDevices}
+            audio
+            video
             participantName={participantName.trim() || undefined}
             options={liveKitOptions}
-            onDisconnected={() => handleDisconnect()}
+            onDisconnected={handleDisconnect}
             style={{ height: '100%', width: '100%' }}
           >
-            <ContactListener
-              onContact={handleContactSeen}
-              fallbackRoomName={roomName}
-              fallbackSelfName={participantName}
-            />
-            <PreferExternalCamera enabled={autoDevices} />
             <UkrainianConference onLeave={handleDisconnect} />
           </LiveKitRoom>
         </section>
@@ -526,113 +353,112 @@ export default function App() {
   );
 }
 
-function ContactListener({
-  onContact,
-  fallbackRoomName,
-  fallbackSelfName,
-}: {
-  onContact: (details: { peerName: string; selfName: string; room: string }) => void;
-  fallbackRoomName: string;
-  fallbackSelfName: string;
-}) {
+function CameraSwitchButton() {
   const room = useRoomContext();
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [activeDeviceId, setActiveDeviceId] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
     if (!room) return;
-    const activeRoomName = room.name || fallbackRoomName;
-    const localIdentity = room.localParticipant?.identity;
-    const identityName = localIdentity ? extractDisplayName(localIdentity) : '';
-    const localNameFromRoom = room.localParticipant?.name ?? '';
-    const resolvedSelfName =
-      localNameFromRoom.trim() || fallbackSelfName.trim() || identityName.trim();
-    if (!resolvedSelfName) {
+
+    let cancelled = false;
+
+    const loadDevices = async (requestPermissions: boolean) => {
+      try {
+        const available = await Room.getLocalDevices('videoinput', requestPermissions);
+        if (cancelled) return;
+        const usable = available.filter(
+          (device) =>
+            device.deviceId && device.deviceId !== 'default' && device.deviceId !== 'communications',
+        );
+        setDevices(usable);
+        const active = room.getActiveDevice('videoinput');
+        if (
+          active &&
+          active !== 'default' &&
+          active !== 'communications' &&
+          usable.some((device) => device.deviceId === active)
+        ) {
+          setActiveDeviceId(active);
+        } else if (usable.length > 0) {
+          setActiveDeviceId(usable[0].deviceId);
+        } else {
+          setActiveDeviceId(null);
+        }
+      } catch (err) {
+        console.warn('Не вдалося отримати перелік камер', err);
+        setDevices([]);
+        setActiveDeviceId(null);
+      }
+    };
+
+    void loadDevices(true);
+
+    const handleChanged = () => {
+      void loadDevices(false);
+    };
+
+    room.on(RoomEvent.MediaDevicesChanged, handleChanged);
+
+    return () => {
+      cancelled = true;
+      room.off(RoomEvent.MediaDevicesChanged, handleChanged);
+    };
+  }, [room]);
+
+  useEffect(() => {
+    if (!room) return;
+    const active = room.getActiveDevice('videoinput');
+    if (active && active !== activeDeviceId) {
+      setActiveDeviceId(active);
+    }
+  }, [room, activeDeviceId]);
+
+  const activeDevice = useMemo(
+    () => devices.find((device) => device.deviceId === activeDeviceId) ?? null,
+    [devices, activeDeviceId],
+  );
+
+  const handleSwitch = useCallback(async () => {
+    if (!room || devices.length <= 1 || pending) {
       return;
     }
+    const currentIndex = devices.findIndex((device) => device.deviceId === activeDeviceId);
+    const nextDevice = devices[(currentIndex + 1) % devices.length];
+    if (!nextDevice) {
+      return;
+    }
+    try {
+      setPending(true);
+      await room.switchActiveDevice('videoinput', nextDevice.deviceId);
+      setActiveDeviceId(nextDevice.deviceId);
+    } catch (err) {
+      console.warn('Не вдалося перемкнути камеру', err);
+    } finally {
+      setPending(false);
+    }
+  }, [room, devices, activeDeviceId, pending]);
 
-    const handleParticipant = (participant: RemoteParticipant) => {
-      if (!participant) return;
-      if (participant.identity === localIdentity) return;
-      const rawName = (participant.name ?? extractDisplayName(participant.identity)).trim();
-      if (!rawName) return;
-      onContact({ peerName: rawName, selfName: resolvedSelfName, room: activeRoomName });
-    };
+  const buttonText = pending ? 'Перемикаю…' : 'Перемкнути камеру';
+  const ariaLabel = activeDevice
+    ? `Перемкнути камеру. Використовується ${describeCamera(activeDevice)}`
+    : 'Перемкнути камеру';
+  const disabled = !room || devices.length <= 1 || pending;
+  const title = activeDevice ? `Зараз використовується: ${describeCamera(activeDevice)}` : undefined;
 
-    const participantsMap = room.remoteParticipants ?? room.participants;
-    participantsMap?.forEach((participant) => handleParticipant(participant));
-
-    const connectedHandler = (participant: RemoteParticipant) => {
-      handleParticipant(participant);
-    };
-
-    const nameChangedHandler = (participant: RemoteParticipant) => {
-      handleParticipant(participant);
-    };
-
-    room.on(RoomEvent.ParticipantConnected, connectedHandler);
-    room.on(RoomEvent.ParticipantNameChanged, nameChangedHandler);
-    room.on(RoomEvent.ParticipantMetadataChanged, nameChangedHandler);
-
-    return () => {
-      room.off(RoomEvent.ParticipantConnected, connectedHandler);
-      room.off(RoomEvent.ParticipantNameChanged, nameChangedHandler);
-      room.off(RoomEvent.ParticipantMetadataChanged, nameChangedHandler);
-    };
-  }, [room, onContact, fallbackRoomName, fallbackSelfName]);
-
-  return null;
-}
-
-function PreferExternalCamera({ enabled }: { enabled: boolean }) {
-  const room = useRoomContext();
-
-  useEffect(() => {
-    if (!room) return;
-
-    let disposed = false;
-    let switching = false;
-
-    const ensurePreferredCamera = async (requestPermissions: boolean) => {
-      try {
-        const devices = await Room.getLocalDevices('videoinput', requestPermissions);
-        if (disposed) {
-          return;
-        }
-        const activeDeviceId = room.getActiveDevice('videoinput');
-        const preferredDevice = selectPreferredCamera(devices, activeDeviceId);
-        if (!preferredDevice || preferredDevice.deviceId === activeDeviceId) {
-          return;
-        }
-        await room.switchActiveDevice('videoinput', preferredDevice.deviceId);
-      } catch (err) {
-        console.warn('Не вдалося автоматично обрати основну камеру:', err);
-      }
-    };
-
-    const scheduleSwitch = (requestPermissions: boolean) => {
-      if (switching) {
-        return;
-      }
-      switching = true;
-      void ensurePreferredCamera(requestPermissions).finally(() => {
-        switching = false;
-      });
-    };
-
-    scheduleSwitch(enabled);
-
-    const handleDevicesChanged = () => {
-      scheduleSwitch(false);
-    };
-
-    room.on(RoomEvent.MediaDevicesChanged, handleDevicesChanged);
-
-    return () => {
-      disposed = true;
-      room.off(RoomEvent.MediaDevicesChanged, handleDevicesChanged);
-    };
-  }, [room, enabled]);
-
-  return null;
+  return (
+    <button
+      type="button"
+      className="ua-button"
+      onClick={handleSwitch}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      title={title}
+    >
+      {buttonText}
+    </button>
+  );
 }
 
 function UkrainianConference({ onLeave }: { onLeave: () => void }) {
@@ -662,6 +488,7 @@ function UkrainianConference({ onLeave }: { onLeave: () => void }) {
         <TrackToggle source={Track.Source.Camera} className="ua-button">
           Камера
         </TrackToggle>
+        <CameraSwitchButton />
         <TrackToggle
           source={Track.Source.ScreenShare}
           className="ua-button"
@@ -676,3 +503,4 @@ function UkrainianConference({ onLeave }: { onLeave: () => void }) {
     </div>
   );
 }
+
