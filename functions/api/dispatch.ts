@@ -91,11 +91,11 @@ async function buildDispatchContext(env: Env, room: string): Promise<DispatchCon
   return { baseUrl, headers };
 }
 
-async function listAgentDispatch(
+async function listAgentDispatches(
   context: DispatchContext,
   room: string,
   agentName: string,
-): Promise<AgentDispatch | null> {
+): Promise<AgentDispatch[]> {
   const listRes = await fetch(`${context.baseUrl}/twirp/livekit.AgentDispatchService/ListDispatch`, {
     method: 'POST',
     headers: context.headers,
@@ -108,11 +108,11 @@ async function listAgentDispatch(
   }
 
   if (!listRes.ok) {
-    return null;
+    return [];
   }
 
   const data = await parseJson<{ agentDispatches?: AgentDispatch[] }>(listRes);
-  return data.agentDispatches?.find((dispatch) => dispatch.agentName === agentName) ?? null;
+  return (data.agentDispatches ?? []).filter((dispatch) => dispatch.agentName === agentName);
 }
 
 async function createAgentDispatch(
@@ -226,8 +226,9 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   try {
     if (method === 'POST') {
       const context = await buildDispatchContext(env, room);
-      const existing = await listAgentDispatch(context, room, agentName);
-      if (existing) {
+      const existingList = await listAgentDispatches(context, room, agentName);
+
+      for (const existing of existingList) {
         const jobCount = existing.state?.jobs?.length ?? 0;
         const deleted = Boolean(existing.state?.deletedAt);
         if (jobCount > 0 && !deleted) {
