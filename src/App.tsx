@@ -23,11 +23,13 @@ interface TokenResponse {
 interface AgentMetadata {
   roomName: string;
   participantName: string;
-  llmToken?: string;
+  gemini_api_key?: string;
 }
 
 const storedNameKey = 'camera-mother-name';
-const storedLlmTokenKey = 'camera-mother-llm-token';
+const storedTokenMapKey = 'camera-mother-llm-tokens';
+const configuredRoomName = (import.meta.env.VITE_DEFAULT_ROOM ?? '').trim();
+const configuredAgentToken = (import.meta.env.VITE_DEFAULT_LLM_TOKEN ?? '').trim();
 
 function randomSuffix(length = 6) {
   const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -75,7 +77,35 @@ function detectMobileViewport() {
   return uaMatch || window.innerWidth <= 768;
 }
 
-async function ensureAgentDispatch(room: string, metadata: AgentMetadata) {
+function loadStoredTokenMap(): Record<string, string> {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+  try {
+    const raw = window.localStorage.getItem(storedTokenMapKey);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      return {};
+    }
+    const entries = Object.entries(parsed as Record<string, unknown>)
+      .filter(
+        ([room, value]) =>
+          typeof room === 'string' &&
+          typeof value === 'string' &&
+          value.trim() !== '' &&
+          (!configuredRoomName || room !== configuredRoomName),
+      )
+      .map(([room, value]) => [room, (value as string).trim()] as const);
+    return Object.fromEntries(entries);
+  } catch {
+    return {};
+  }
+}
+
+async function ensureAgentDispatch(room: string, metadata?: AgentMetadata) {
   try {
     const response = await fetch('/api/dispatch', {
       method: 'POST',
@@ -128,9 +158,7 @@ async function requestToken(room: string, name: string) {
 export default function App() {
   const search =
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const queryRoom = search.get('room')?.trim() ?? '';
-  const configuredRoom = (import.meta.env.VITE_DEFAULT_ROOM ?? '').trim();
-  const initialRoom = queryRoom || configuredRoom;
+  const initialRoom = search.get('room')?.trim() ?? '';
 
   const [roomName, setRoomName] = useState(() => initialRoom);
   const [isCreator, setIsCreator] = useState(() => !initialRoom);
@@ -138,9 +166,16 @@ export default function App() {
     if (typeof window === 'undefined') return '';
     return window.localStorage.getItem(storedNameKey) ?? '';
   });
+  const [tokenByRoom, setTokenByRoom] = useState<Record<string, string>>(() => loadStoredTokenMap());
   const [llmToken, setLlmToken] = useState(() => {
-    if (typeof window === 'undefined') return '';
-    return window.localStorage.getItem(storedLlmTokenKey) ?? '';
+    if (!initialRoom) {
+      return '';
+    }
+    if (configuredRoomName && initialRoom === configuredRoomName && configuredAgentToken) {
+      return configuredAgentToken;
+    }
+    const stored = loadStoredTokenMap();
+    return stored[initialRoom] ?? '';
   });
   const [credentials, setCredentials] = useState<TokenResponse | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -158,12 +193,25 @@ export default function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (llmToken.trim()) {
-      window.localStorage.setItem(storedLlmTokenKey, llmToken.trim());
-    } else {
-      window.localStorage.removeItem(storedLlmTokenKey);
+    try {
+      const entries = Object.entries(tokenByRoom).filter(([room, token]) => {
+        if (!room || typeof token !== 'string' || token.trim() === '') {
+          return false;
+        }
+        if (configuredRoomName && room === configuredRoomName) {
+          return false;
+        }
+        return true;
+      });
+      if (entries.length === 0) {
+        window.localStorage.removeItem(storedTokenMapKey);
+      } else {
+        window.localStorage.setItem(storedTokenMapKey, JSON.stringify(Object.fromEntries(entries)));
+      }
+    } catch {
+      // ignore persistence errors
     }
-  }, [llmToken]);
+  }, [tokenByRoom]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -193,9 +241,7 @@ export default function App() {
   );
 
   const showLlmTokenField = isCreator;
-  const requireLlmToken = showLlmTokenField;
-  const readyToConnect =
-    roomName.trim() !== '' && participantName.trim() !== '' && (!requireLlmToken || llmToken.trim() !== '');
+  const readyToConnect = roomName.trim() !== '' && participantName.trim() !== '';
 
   const connectButtonText = connecting ? 'Зачекайте…' : isCreator ? 'Почати трансляцію' : 'Підключитися';
 
@@ -203,6 +249,7 @@ export default function App() {
     const generated = generateRoomName();
     setRoomName(generated);
     setIsCreator(true);
+    setLlmToken('');
     setCredentials(null);
     setStatus(null);
     setError(null);
@@ -212,34 +259,53 @@ export default function App() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!readyToConnect) {
-      if (requireLlmToken && llmToken.trim() === '') {
-        setError('Додайте LLM токен для нової зустрічі.');
-      } else {
-        setError('Вкажіть своє ім’я.');
-      }
+      setError('Вкажіть своє ім’я.');
       return;
     }
 
     const trimmedRoom = roomName.trim();
     const trimmedName = participantName.trim();
     const trimmedToken = llmToken.trim();
+    const isConfiguredRoom = configuredRoomName && trimmedRoom === configuredRoomName;
+    const envTokenForRoom = isConfiguredRoom ? configuredAgentToken : '';
+    const effectiveToken = envTokenForRoom || trimmedToken;
+    const shouldUseAgent = Boolean(isConfiguredRoom || effectiveToken);
+
+    const metadata = shouldUseAgent
+      ? {
+          roomName: trimmedRoom,
+          participantName: trimmedName,
+          gemini_api_key: effectiveToken || undefined,
+        }
+      : undefined;
 
     try {
       setConnecting(true);
       setError(null);
-      setStatus('Активую асистента…');
-      const metadata: AgentMetadata = {
-        roomName: trimmedRoom,
-        participantName: trimmedName,
-      };
-      if (showLlmTokenField && trimmedToken) {
-        metadata.llmToken = trimmedToken;
+      setStatus(shouldUseAgent ? 'Активую асистента…' : 'Готую з’єднання…');
+      if (shouldUseAgent) {
+        await ensureAgentDispatch(trimmedRoom, metadata);
       }
-      await ensureAgentDispatch(trimmedRoom, metadata);
       setStatus('Отримую токен…');
       const tokenResp = await requestToken(trimmedRoom, trimmedName);
       setCredentials(tokenResp);
       setStatus('Трансляція активна.');
+      if (trimmedRoom) {
+        setTokenByRoom((prev) => {
+          if (trimmedToken) {
+            if (prev[trimmedRoom] === trimmedToken) {
+              return prev;
+            }
+            return { ...prev, [trimmedRoom]: trimmedToken };
+          }
+          if (prev[trimmedRoom]) {
+            const next = { ...prev };
+            delete next[trimmedRoom];
+            return next;
+          }
+          return prev;
+        });
+      }
     } catch (err) {
       console.error(err);
       setCredentials(null);
@@ -274,7 +340,7 @@ export default function App() {
             <>
               <p>
                 Вашу кімнату для зустрічі створено.<br />
-                Вкажіть своє імʼя{showLlmTokenField ? ', додайте LLM токен і натисніть кнопку, щоб підключитися.' : ' і натисніть кнопку, щоб підключитися.'}
+                Вкажіть своє імʼя{showLlmTokenField ? ', за бажанням додайте LLM токен і натисніть кнопку, щоб підключитися.' : ' і натисніть кнопку, щоб підключитися.'}
               </p>
 
               {isCreator && shareLink && (
@@ -301,7 +367,7 @@ export default function App() {
                 {showLlmTokenField && (
                   <>
                     <label>
-                      LLM API токен для ШІ асистента
+                      LLM API токен для ШІ асистента (необов’язково)
                       <input
                         type="text"
                         value={llmToken}
@@ -311,8 +377,8 @@ export default function App() {
                       />
                     </label>
                     <small id="llm-token-hint" className="hint">
-                      Токен збережеться в браузері і передаватиметься асистенту. Для нової зустрічі він потрібен, щоб
-                      агент міг допомагати учасникам.
+                      Токен збережеться в браузері і, якщо введений, передаватиметься асистенту. Без токена працюватиме
+                      звичайна відеозустріч.
                     </small>
                   </>
                 )}
