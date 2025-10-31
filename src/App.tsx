@@ -626,7 +626,7 @@ export default function App() {
     <main className={`layout${credentials ? ' layout-room-active' : ''}`} data-lk-theme="default">
       {!credentials && (
         <section className="card" aria-live="polite">
-          <h1>{!roomName ? 'Створити трансляцію' : 'Вітаю'}</h1>
+          <h1>{!roomName ? 'Створити трансляцію' : 'Вітаю' } {participantName}</h1>
 
           {!roomName ? (
             <>
@@ -641,7 +641,11 @@ export default function App() {
             <>
               <p>
                 Вашу кімнату для зустрічі створено.<br />
-                Вкажіть своє імʼя{showLlmTokenField ? ', за бажанням додайте LLM токен і натисніть кнопку, щоб підключитися.' : ' і натисніть кнопку, щоб підключитися.'}
+                {trimmedParticipantName
+                  ? 'Натисніть кнопку, щоб підключитися.'
+                  : showLlmTokenField
+                    ? 'Вкажіть своє імʼя, за бажанням додайте LLM токен і натисніть кнопку, щоб підключитися.'
+                    : 'Вкажіть своє імʼя і натисніть кнопку, щоб підключитися.'}
               </p>
 
               {isCreator && shareLink && (
@@ -654,16 +658,18 @@ export default function App() {
               )}
 
               <form className="inputs" onSubmit={handleSubmit}>
-                <label>
-                  Ваше імʼя
-                  <input
-                    type="text"
-                    required
-                    value={participantName}
-                    placeholder="Наприклад, Олексій"
-                    onChange={(event) => setParticipantName(event.target.value)}
-                  />
-                </label>
+                {!trimmedParticipantName && (
+                  <label>
+                    Ваше імʼя
+                    <input
+                      type="text"
+                      required
+                      value={participantName}
+                      placeholder="Наприклад, Олексій"
+                      onChange={(event) => setParticipantName(event.target.value)}
+                    />
+                  </label>
+                )}
 
                 {showLlmTokenField && (
                   <>
@@ -948,7 +954,7 @@ function UkrainianConference({
         </GridLayout>
       </div>
       <div className="ua-controls">
-        <ul className="sr-only" aria-label="Опис кнопок керування конференцією">
+        {/* <ul className="sr-only" aria-label="Опис кнопок керування конференцією">
           <li id={unmuteHintId}>
             Увімкнути звук: надає браузеру доступ до аудіо, щоб ви могли чути інших учасників.
           </li>
@@ -972,22 +978,22 @@ function UkrainianConference({
             </li>
           )}
           <li id={leaveHintId}>Завершення сеансу: завершує трансляцію й вимикає всі пристрої.</li>
-        </ul>
-        <StartMediaButton
+        </ul> */}
+        {/* <StartMediaButton
           className="ua-button"
           data-variant="primary"
           aria-describedby={unmuteHintId}
           aria-label="Увімкнути звук і дозволити відтворення аудіо"
         >
           Увімкнути звук
-        </StartMediaButton>
+        </StartMediaButton> */}
         <AccessibleTrackToggle
           source={Track.Source.Microphone}
           baseLabel="Мікрофон"
           labelOn="Мікрофон увімкнено. Натисніть, щоб вимкнути."
           labelOff="Мікрофон вимкнено. Натисніть, щоб увімкнути."
           className="ua-button"
-          aria-describedby={micHintId}
+          // aria-describedby={micHintId}
         >
           Мікрофон
         </AccessibleTrackToggle>
@@ -997,7 +1003,7 @@ function UkrainianConference({
           labelOn="Камера увімкнена. Натисніть, щоб вимкнути."
           labelOff="Камера вимкнена. Натисніть, щоб увімкнути."
           className="ua-button"
-          aria-describedby={camHintId}
+          // aria-describedby={camHintId}
         >
           Камера
         </AccessibleTrackToggle>
@@ -1008,7 +1014,7 @@ function UkrainianConference({
             className="ua-button secondary"
             onClick={onInviteAgent}
             disabled={inviteDisabled}
-            aria-describedby={inviteHintId}
+            // aria-describedby={inviteHintId}
             aria-label="Запросити агента"
           >
             {inviteButtonLabel}
@@ -1025,7 +1031,7 @@ function UkrainianConference({
               }
             }}
             disabled={pauseDisabled}
-            aria-describedby={pauseHintId}
+            // aria-describedby={pauseHintId}
             aria-label={agentStatus === 'paused' ? 'Активувати агента' : 'Призупинити агента'}
           >
             {pauseButtonLabel}
@@ -1039,7 +1045,7 @@ function UkrainianConference({
             labelOff="Показ екрану вимкнений. Натисніть, щоб увімкнути."
             className="ua-button"
             captureOptions={{ audio: true, selfBrowserSurface: 'include' }}
-            aria-describedby={shareHintId}
+            // aria-describedby={shareHintId}
           >
             Показати екран
           </AccessibleTrackToggle>
@@ -1048,7 +1054,7 @@ function UkrainianConference({
           className="ua-button danger"
           stopTracks
           onClick={onLeave}
-          aria-describedby={leaveHintId}
+          // aria-describedby={leaveHintId}
           aria-label="Завершити трансляцію"
         >
           Завершення сеансу
