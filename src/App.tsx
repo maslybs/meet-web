@@ -298,9 +298,6 @@ export default function App() {
       }
       return;
     }
-    if (agentStatus !== 'requesting' && agentStatus !== 'active') {
-      return;
-    }
     if (typeof window === 'undefined') {
       return;
     }
