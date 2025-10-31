@@ -1,30 +1,10 @@
-import {
-  FormEvent,
-  forwardRef,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useId,
-} from 'react';
-import {
-  DisconnectButton,
-  GridLayout,
-  LiveKitRoom,
-  ParticipantTile,
-  RoomAudioRenderer,
-  StartMediaButton,
-  useTrackToggle,
-  useParticipants,
-  useRoomContext,
-  useTracks,
-} from '@livekit/components-react';
-import type { TrackToggleProps } from '@livekit/components-react';
-import type { ToggleSource } from '@livekit/components-core';
-import { Room, RoomEvent, Track, facingModeFromDeviceLabel } from 'livekit-client';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { LiveKitRoom } from '@livekit/components-react';
 import '@livekit/components-styles';
 import './style.css';
+
+import UkrainianConference from './components/UkrainianConference';
+import type { AgentControlConfig, AgentStatus } from './types/agent';
 
 interface TokenResponse {
   token: string;
@@ -38,8 +18,6 @@ interface AgentMetadata {
   gemini_api_key?: string;
   multi_participant?: boolean;
 }
-
-type AgentStatus = 'idle' | 'requesting' | 'active' | 'paused' | 'error';
 
 const storedNameKey = 'camera-mother-name';
 const storedTokenMapKey = 'camera-mother-llm-tokens';
@@ -59,71 +37,6 @@ function randomSuffix(length = 6) {
 
 function generateRoomName() {
   return `room-${randomSuffix(6).toLowerCase()}`;
-}
-
-function isEnvironmentCamera(device: MediaDeviceInfo) {
-  const label = (device.label ?? '').trim();
-  if (!label) {
-    return false;
-  }
-  const facing = facingModeFromDeviceLabel(label)?.facingMode;
-  if (facing === 'environment') {
-    return true;
-  }
-  const normalized = label.toLowerCase();
-  const keywords = ['back', 'rear', 'environment', 'main', 'основн', 'зад'];
-  return keywords.some((keyword) => normalized.includes(keyword));
-}
-
-function describeCamera(device: MediaDeviceInfo) {
-  const label = (device.label ?? '').trim();
-  if (label) {
-    return label;
-  }
-  return isEnvironmentCamera(device) ? 'Основна камера' : 'Інша камера';
-}
-
-type LiveKitTrackToggleProps = TrackToggleProps<ToggleSource>;
-
-interface AccessibleTrackToggleProps extends LiveKitTrackToggleProps {
-  baseLabel: string;
-  labelOn?: string;
-  labelOff?: string;
-}
-
-const AccessibleTrackToggle = forwardRef<HTMLButtonElement, AccessibleTrackToggleProps>(
-  ({ baseLabel, labelOn, labelOff, children, ...rest }, ref) => {
-    const { buttonProps, enabled } = useTrackToggle(rest);
-    const providedLabel =
-      (rest as { ['aria-label']?: string })['aria-label'] ?? undefined;
-    const computedLabel =
-      providedLabel ??
-      (enabled
-        ? labelOn ?? `${baseLabel}. Зараз увімкнено`
-        : labelOff ?? `${baseLabel}. Зараз вимкнено`);
-    const mergedProps = {
-      ...buttonProps,
-      'aria-label': computedLabel,
-      'aria-pressed': enabled,
-      type: 'button' as const,
-    };
-    return (
-      <button {...mergedProps} ref={ref}>
-        {children ?? baseLabel}
-      </button>
-    );
-  },
-);
-
-type AgentControlState = 'invite' | 'requesting' | 'pause' | 'resume' | 'error';
-
-interface AgentControlConfig {
-  label: string;
-  ariaLabel: string;
-  disabled: boolean;
-  onClick: () => void;
-  hint: string;
-  state: AgentControlState;
 }
 
 function loadStoredTokenMap(): Record<string, string> {
@@ -319,7 +232,7 @@ export default function App() {
           ? (data.dispatch.agentName as string).trim()
           : '';
       if (dispatchAgentName) {
-        setAgentIdentity((prev) => (dispatchAgentName && dispatchAgentName !== prev ? dispatchAgentName : prev));
+        setAgentIdentity((prev: string) => (dispatchAgentName && dispatchAgentName !== prev ? dispatchAgentName : prev));
       }
       if (!data.active && pauseRequestedRef.current) {
         setAgentStatus('paused');
@@ -329,7 +242,7 @@ export default function App() {
       const nextStatus: AgentStatus = data.active ? 'active' : 'idle';
       setAgentStatus(nextStatus);
       if (nextStatus === 'active') {
-        setAgentMessage((prev) => (prev && prev.includes('паузі') ? prev : 'Агент у кімнаті.'));
+        setAgentMessage((prev: string | null) => (prev && prev.includes('паузі') ? prev : 'Агент у кімнаті.'));
       } else if (!pauseRequestedRef.current) {
         setAgentMessage(null);
       }
@@ -405,6 +318,7 @@ export default function App() {
     if (!trimmedRoom) {
       return;
     }
+
     try {
       const response = await fetch(`/api/dispatch?room=${encodeURIComponent(trimmedRoom)}`, {
         method: 'DELETE',
@@ -492,7 +406,7 @@ export default function App() {
       }
       return prev;
     });
-    setAgentMessage((prev) => {
+    setAgentMessage((prev: string | null) => {
       if (present) {
         return prev && prev.includes('паузі') ? prev : 'Агент у кімнаті.';
       }
@@ -648,7 +562,7 @@ export default function App() {
           return null;
         }
         return {
-          label: 'Спробувати ще раз',
+          label: 'Запросити агента',
           ariaLabel: 'Спробувати ще раз запросити агента',
           disabled: inviteDisabled,
           onClick: handleRequestAgent,
@@ -790,275 +704,5 @@ export default function App() {
         </section>
       )}
     </main>
-  );
-}
-
-function CameraSwitchButton({
-  descriptionId,
-  onAvailabilityChange,
-}: {
-  descriptionId: string;
-  onAvailabilityChange?: (available: boolean) => void;
-}) {
-  const room = useRoomContext();
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [activeDeviceId, setActiveDeviceId] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-
-  useEffect(() => {
-    if (!room) return;
-
-    let cancelled = false;
-
-    const loadDevices = async (requestPermissions: boolean) => {
-      try {
-        const available = await Room.getLocalDevices('videoinput', requestPermissions);
-        if (cancelled) return;
-        const usable = available.filter(
-          (device) =>
-            device.deviceId && device.deviceId !== 'default' && device.deviceId !== 'communications',
-        );
-        setDevices(usable);
-        const active = room.getActiveDevice('videoinput');
-        if (
-          active &&
-          active !== 'default' &&
-          active !== 'communications' &&
-          usable.some((device) => device.deviceId === active)
-        ) {
-          setActiveDeviceId(active);
-        } else if (usable.length > 0) {
-          setActiveDeviceId(usable[0].deviceId);
-        } else {
-          setActiveDeviceId(null);
-        }
-      } catch (err) {
-        console.warn('Не вдалося отримати перелік камер', err);
-        setDevices([]);
-        setActiveDeviceId(null);
-      }
-    };
-
-    void loadDevices(true);
-
-    const handleChanged = () => {
-      void loadDevices(false);
-    };
-
-    room.on(RoomEvent.MediaDevicesChanged, handleChanged);
-
-    return () => {
-      cancelled = true;
-      room.off(RoomEvent.MediaDevicesChanged, handleChanged);
-    };
-  }, [room]);
-
-  useEffect(() => {
-    if (!room) return;
-    const active = room.getActiveDevice('videoinput');
-    if (active && active !== activeDeviceId) {
-      setActiveDeviceId(active);
-    }
-  }, [room, activeDeviceId]);
-
-  const activeDevice = useMemo(
-    () => devices.find((device) => device.deviceId === activeDeviceId) ?? null,
-    [devices, activeDeviceId],
-  );
-  const hasMultipleCameras = devices.length > 1;
-
-  useEffect(() => {
-    onAvailabilityChange?.(hasMultipleCameras);
-  }, [onAvailabilityChange, hasMultipleCameras]);
-
-  const handleSwitch = useCallback(async () => {
-    if (!room || !hasMultipleCameras || pending) {
-      return;
-    }
-    const currentIndex = devices.findIndex((device) => device.deviceId === activeDeviceId);
-    const nextDevice = devices[(currentIndex + 1) % devices.length];
-    if (!nextDevice) {
-      return;
-    }
-    try {
-      setPending(true);
-      await room.switchActiveDevice('videoinput', nextDevice.deviceId);
-      setActiveDeviceId(nextDevice.deviceId);
-    } catch (err) {
-      console.warn('Не вдалося перемкнути камеру', err);
-    } finally {
-      setPending(false);
-    }
-  }, [room, devices, activeDeviceId, pending]);
-
-  const buttonText = pending ? 'Перемикаю…' : 'Перемкнути камеру';
-  const ariaLabel = activeDevice
-    ? `Перемкнути камеру. Використовується ${describeCamera(activeDevice)}`
-    : 'Перемкнути камеру';
-  const disabled = !room || !hasMultipleCameras || pending;
-  const title = activeDevice ? `Зараз використовується: ${describeCamera(activeDevice)}` : undefined;
-
-  if (!hasMultipleCameras) {
-    return null;
-  }
-
-  return (
-    <button
-      type="button"
-      className="ua-button"
-      onClick={handleSwitch}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      title={title}
-      aria-describedby={descriptionId}
-    >
-      {buttonText}
-    </button>
-  );
-}
-
-function UkrainianConference({
-  onLeave,
-  agentControl,
-  showInviteHint,
-  roomName,
-  agentMessage,
-  agentIdentity,
-  onAgentPresenceChange,
-  agentStatus,
-}: {
-  onLeave: () => void;
-  agentControl: AgentControlConfig | null;
-  showInviteHint: boolean;
-  roomName: string;
-  agentMessage: string | null;
-  agentIdentity: string;
-  onAgentPresenceChange: (present: boolean) => void;
-  agentStatus: AgentStatus;
-}) {
-  const tracks = useTracks(
-    [
-      { source: Track.Source.Camera, withPlaceholder: true },
-      { source: Track.Source.ScreenShare },
-    ],
-    { updateOnlyOn: [RoomEvent.ActiveSpeakersChanged], onlySubscribed: false },
-  );
-  const [canSwitchCamera, setCanSwitchCamera] = useState(false);
-  const unmuteHintId = useId();
-  const micHintId = useId();
-  const camHintId = useId();
-  const switchHintId = useId();
-  const agentControlHintId = useId();
-  const leaveHintId = useId();
-  const participants = useParticipants();
-  const agentParticipant = useMemo(
-    () =>
-      agentIdentity
-        ? participants.find((participant) => participant.identity === agentIdentity) ?? null
-        : null,
-    [participants, agentIdentity],
-  );
-
-  useEffect(() => {
-    onAgentPresenceChange(Boolean(agentParticipant));
-  }, [agentParticipant, onAgentPresenceChange]);
-
-  return (
-    <div className="ua-conference">
-      <RoomAudioRenderer />
-      <div className="ua-overlays">
-        {roomName && (
-          <div className="ua-overlay ua-overlay-room">Кімната: <strong>{roomName}</strong></div>
-        )}
-        {agentMessage && (
-          <div
-            className={`ua-overlay ua-overlay-agent${agentStatus === 'error' ? ' ua-overlay-error' : ''}`}
-            role="status"
-          >
-            {agentMessage}
-          </div>
-        )}
-        {showInviteHint && (
-          <div className="ua-overlay ua-overlay-hint" role="status">
-            Щоб запросити агента, додайте LLM токен.
-          </div>
-        )}
-      </div>
-      <div className="ua-grid">
-        <GridLayout tracks={tracks}>
-          <ParticipantTile />
-        </GridLayout>
-      </div>
-      <div className="ua-controls">
-        <ul className="sr-only" aria-label="Опис кнопок керування конференцією">
-          <li id={unmuteHintId}>
-            Увімкнути звук: надає браузеру доступ до аудіо, щоб ви могли чути інших учасників.
-          </li>
-          <li id={micHintId}>Мікрофон: вмикає або вимикає ваш голос під час дзвінка.</li>
-          <li id={camHintId}>Камера: показує або приховує ваше відео.</li>
-          {canSwitchCamera && <li id={switchHintId}>Перемкнути камеру: вибирає іншу камеру вашого пристрою.</li>}
-          {agentControl && <li id={agentControlHintId}>{agentControl.hint}</li>}
-          {showInviteHint && <li>Щоб запросити агента, додайте LLM токен.</li>}
-          <li id={leaveHintId}>Завершення сеансу: завершує трансляцію й вимикає всі пристрої.</li>
-        </ul>
-        <div className="ua-controls-group ua-controls-group--left">
-          <StartMediaButton
-            className="ua-button"
-            data-variant="primary"
-            aria-describedby={unmuteHintId}
-            aria-label="Увімкнути звук і дозволити відтворення аудіо"
-          >
-            Увімкнути звук
-          </StartMediaButton>
-          <AccessibleTrackToggle
-            source={Track.Source.Microphone}
-            baseLabel="Мікрофон"
-            labelOn="Мікрофон увімкнено. Натисніть, щоб вимкнути."
-            labelOff="Мікрофон вимкнено. Натисніть, щоб увімкнути."
-            className="ua-button"
-            aria-describedby={micHintId}
-          >
-            Мікрофон
-          </AccessibleTrackToggle>
-          <AccessibleTrackToggle
-            source={Track.Source.Camera}
-            baseLabel="Камера"
-            labelOn="Камера увімкнена. Натисніть, щоб вимкнути."
-            labelOff="Камера вимкнена. Натисніть, щоб увімкнути."
-            className="ua-button"
-            aria-describedby={camHintId}
-          >
-            Камера
-          </AccessibleTrackToggle>
-          <CameraSwitchButton descriptionId={switchHintId} onAvailabilityChange={setCanSwitchCamera} />
-        </div>
-        <div className="ua-controls-group ua-controls-group--center">
-          {agentControl && (
-            <button
-              type="button"
-              className="ua-button secondary agent-control"
-              onClick={agentControl.onClick}
-              disabled={agentControl.disabled}
-              aria-describedby={agentControlHintId}
-              aria-label={agentControl.ariaLabel}
-              data-agent-state={agentControl.state}
-            >
-              {agentControl.label}
-            </button>
-          )}
-        </div>
-        <div className="ua-controls-group ua-controls-group--right">
-          <DisconnectButton
-            className="ua-button danger"
-            stopTracks
-            onClick={onLeave}
-            aria-describedby={leaveHintId}
-            aria-label="Завершити трансляцію"
-          >
-            Завершення сеансу
-          </DisconnectButton>
-        </div>
-      </div>
-    </div>
   );
 }
