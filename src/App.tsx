@@ -83,16 +83,6 @@ function describeCamera(device: MediaDeviceInfo) {
   return isEnvironmentCamera(device) ? 'Основна камера' : 'Інша камера';
 }
 
-function detectMobileViewport() {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-  const userAgent =
-    typeof navigator !== 'undefined' ? navigator.userAgent || navigator.vendor || '' : '';
-  const uaMatch = /Mobi|Android|iPhone|iPad|Mobile|Silk/.test(userAgent);
-  return uaMatch || window.innerWidth <= 768;
-}
-
 type LiveKitTrackToggleProps = TrackToggleProps<ToggleSource>;
 
 interface AccessibleTrackToggleProps extends LiveKitTrackToggleProps {
@@ -124,6 +114,17 @@ const AccessibleTrackToggle = forwardRef<HTMLButtonElement, AccessibleTrackToggl
     );
   },
 );
+
+type AgentControlState = 'invite' | 'requesting' | 'pause' | 'resume' | 'error';
+
+interface AgentControlConfig {
+  label: string;
+  ariaLabel: string;
+  disabled: boolean;
+  onClick: () => void;
+  hint: string;
+  state: AgentControlState;
+}
 
 function loadStoredTokenMap(): Record<string, string> {
   if (typeof window === 'undefined') {
@@ -396,22 +397,9 @@ export default function App() {
   const readyToConnect = trimmedRoom !== '' && trimmedParticipantName !== '';
 
   const connectButtonText = connecting ? 'Зачекайте…' : isCreator ? 'Почати трансляцію' : 'Підключитися';
-  const inviteButtonLabel =
-    agentStatus === 'active'
-      ? 'Агент у кімнаті'
-      : agentStatus === 'requesting'
-      ? 'Запрошую…'
-      : agentStatus === 'paused'
-      ? 'Агент на паузі'
-      : agentStatus === 'error'
-      ? 'Спробувати ще раз'
-      : 'Запросити агента';
-  const pauseButtonLabel = agentStatus === 'paused' ? 'Активувати' : 'Пауза';
   const inviteDisabled = !credentials || !canInviteAgent || agentStatus === 'requesting';
-  const showInviteButton = canInviteAgent && (agentStatus === 'idle' || agentStatus === 'error');
-  const showPauseButton = agentStatus === 'active' || agentStatus === 'paused';
   const pauseDisabled = !credentials || agentStatus === 'requesting';
-  const showInviteHint = !canInviteAgent && isCreator;
+  const isPausingRequest = pauseRequestedRef.current;
 
   const clearAgentDispatch = useCallback(async () => {
     if (!trimmedRoom) {
@@ -622,6 +610,78 @@ export default function App() {
     }
   }, [agentStatus, credentials, ensureAgentActive, trimmedRoom]);
 
+  const agentControl = useMemo<AgentControlConfig | null>(() => {
+    switch (agentStatus) {
+      case 'active':
+        return {
+          label: 'Пауза агента',
+          ariaLabel: 'Поставити агента на паузу, щоб він не чув користувачів',
+          disabled: pauseDisabled,
+          onClick: handleToggleAgentListening,
+          hint: 'Пауза агента: тимчасово вимикає звук для нього, щоб він не чув учасників.',
+          state: 'pause',
+        };
+      case 'paused':
+        return {
+          label: 'Активувати агента',
+          ariaLabel: 'Активувати агента, щоб він знову чув користувачів',
+          disabled: pauseDisabled,
+          onClick: handleToggleAgentListening,
+          hint: 'Активувати агента: знову вмикає звук для агента.',
+          state: 'resume',
+        };
+      case 'requesting': {
+        const label = isPausingRequest ? 'Призупиняю…' : 'Запрошую…';
+        return {
+          label,
+          ariaLabel: `${label} Зачекайте.`,
+          disabled: true,
+          onClick: isPausingRequest ? handleToggleAgentListening : handleRequestAgent,
+          hint: isPausingRequest
+            ? 'Призупиняю агента: вимикаю для нього звук.'
+            : 'Запрошую агента до кімнати, зачекайте кілька секунд.',
+          state: 'requesting',
+        };
+      }
+      case 'error':
+        if (!canInviteAgent) {
+          return null;
+        }
+        return {
+          label: 'Спробувати ще раз',
+          ariaLabel: 'Спробувати ще раз запросити агента',
+          disabled: inviteDisabled,
+          onClick: handleRequestAgent,
+          hint: 'Повторно запросити агента до кімнати.',
+          state: 'error',
+        };
+      case 'idle':
+        if (!canInviteAgent) {
+          return null;
+        }
+        return {
+          label: 'Запросити агента',
+          ariaLabel: 'Запросити агента до кімнати',
+          disabled: inviteDisabled,
+          onClick: handleRequestAgent,
+          hint: 'Запросити агента: додає асистента, який допомагатиме користувачеві.',
+          state: 'invite',
+        };
+      default:
+        return null;
+    }
+  }, [
+    agentStatus,
+    canInviteAgent,
+    handleRequestAgent,
+    handleToggleAgentListening,
+    inviteDisabled,
+    isPausingRequest,
+    pauseDisabled,
+  ]);
+
+  const showInviteHint = !canInviteAgent && isCreator;
+
   return (
     <main className={`layout${credentials ? ' layout-room-active' : ''}`} data-lk-theme="default">
       {!credentials && (
@@ -718,14 +778,7 @@ export default function App() {
           >
             <UkrainianConference
               onLeave={handleDisconnect}
-              onInviteAgent={handleRequestAgent}
-              onToggleAgent={handleToggleAgentListening}
-              inviteDisabled={inviteDisabled}
-              pauseDisabled={pauseDisabled}
-              inviteButtonLabel={inviteButtonLabel}
-              pauseButtonLabel={pauseButtonLabel}
-              showInviteButton={showInviteButton}
-              showPauseButton={showPauseButton}
+              agentControl={agentControl}
               showInviteHint={showInviteHint}
               roomName={roomName}
               agentMessage={agentMessage}
@@ -866,14 +919,7 @@ function CameraSwitchButton({
 
 function UkrainianConference({
   onLeave,
-  onInviteAgent,
-  onToggleAgent,
-  inviteDisabled,
-  pauseDisabled,
-  inviteButtonLabel,
-  pauseButtonLabel,
-  showInviteButton,
-  showPauseButton,
+  agentControl,
   showInviteHint,
   roomName,
   agentMessage,
@@ -882,14 +928,7 @@ function UkrainianConference({
   agentStatus,
 }: {
   onLeave: () => void;
-  onInviteAgent: () => void;
-  onToggleAgent: () => void | Promise<void>;
-  inviteDisabled: boolean;
-  pauseDisabled: boolean;
-  inviteButtonLabel: string;
-  pauseButtonLabel: string;
-  showInviteButton: boolean;
-  showPauseButton: boolean;
+  agentControl: AgentControlConfig | null;
   showInviteHint: boolean;
   roomName: string;
   agentMessage: string | null;
@@ -904,15 +943,12 @@ function UkrainianConference({
     ],
     { updateOnlyOn: [RoomEvent.ActiveSpeakersChanged], onlySubscribed: false },
   );
-  const isMobile = useIsMobile();
   const [canSwitchCamera, setCanSwitchCamera] = useState(false);
   const unmuteHintId = useId();
   const micHintId = useId();
   const camHintId = useId();
   const switchHintId = useId();
-  const inviteHintId = useId();
-  const pauseHintId = useId();
-  const shareHintId = useId();
+  const agentControlHintId = useId();
   const leaveHintId = useId();
   const participants = useParticipants();
   const agentParticipant = useMemo(
@@ -954,130 +990,75 @@ function UkrainianConference({
         </GridLayout>
       </div>
       <div className="ua-controls">
-        {/* <ul className="sr-only" aria-label="Опис кнопок керування конференцією">
+        <ul className="sr-only" aria-label="Опис кнопок керування конференцією">
           <li id={unmuteHintId}>
             Увімкнути звук: надає браузеру доступ до аудіо, щоб ви могли чути інших учасників.
           </li>
           <li id={micHintId}>Мікрофон: вмикає або вимикає ваш голос під час дзвінка.</li>
           <li id={camHintId}>Камера: показує або приховує ваше відео.</li>
           {canSwitchCamera && <li id={switchHintId}>Перемкнути камеру: вибирає іншу камеру вашого пристрою.</li>}
-          {showInviteButton && (
-            <li id={inviteHintId}>Запросити агента: додає асистента, щоб допомогти описувати події під час сеансу.</li>
-          )}
-          {showInviteHint && (
-            <li>Щоб запросити агента, додайте LLM токен.</li>
-          )}
-          {showPauseButton && (
-            <li id={pauseHintId}>
-              Пауза агента: тимчасово вимикає агента; натисніть «Активувати», щоб знову дозволити йому слухати.
-            </li>
-          )}
-          {!isMobile && (
-            <li id={shareHintId}>
-              Показати екран: передає зображення вашого екрана співрозмовнику (доступно лише на компʼютері).
-            </li>
-          )}
+          {agentControl && <li id={agentControlHintId}>{agentControl.hint}</li>}
+          {showInviteHint && <li>Щоб запросити агента, додайте LLM токен.</li>}
           <li id={leaveHintId}>Завершення сеансу: завершує трансляцію й вимикає всі пристрої.</li>
-        </ul> */}
-        {/* <StartMediaButton
-          className="ua-button"
-          data-variant="primary"
-          aria-describedby={unmuteHintId}
-          aria-label="Увімкнути звук і дозволити відтворення аудіо"
-        >
-          Увімкнути звук
-        </StartMediaButton> */}
-        <AccessibleTrackToggle
-          source={Track.Source.Microphone}
-          baseLabel="Мікрофон"
-          labelOn="Мікрофон увімкнено. Натисніть, щоб вимкнути."
-          labelOff="Мікрофон вимкнено. Натисніть, щоб увімкнути."
-          className="ua-button"
-          // aria-describedby={micHintId}
-        >
-          Мікрофон
-        </AccessibleTrackToggle>
-        <AccessibleTrackToggle
-          source={Track.Source.Camera}
-          baseLabel="Камера"
-          labelOn="Камера увімкнена. Натисніть, щоб вимкнути."
-          labelOff="Камера вимкнена. Натисніть, щоб увімкнути."
-          className="ua-button"
-          // aria-describedby={camHintId}
-        >
-          Камера
-        </AccessibleTrackToggle>
-        <CameraSwitchButton descriptionId={switchHintId} onAvailabilityChange={setCanSwitchCamera} />
-        {showInviteButton && (
-          <button
-            type="button"
-            className="ua-button secondary"
-            onClick={onInviteAgent}
-            disabled={inviteDisabled}
-            // aria-describedby={inviteHintId}
-            aria-label="Запросити агента"
-          >
-            {inviteButtonLabel}
-          </button>
-        )}
-        {showPauseButton && (
-          <button
-            type="button"
-            className="ua-button secondary"
-            onClick={() => {
-              const result = onToggleAgent();
-              if (result instanceof Promise) {
-                void result;
-              }
-            }}
-            disabled={pauseDisabled}
-            // aria-describedby={pauseHintId}
-            aria-label={agentStatus === 'paused' ? 'Активувати агента' : 'Призупинити агента'}
-          >
-            {pauseButtonLabel}
-          </button>
-        )}
-        {!isMobile && (
-          <AccessibleTrackToggle
-            source={Track.Source.ScreenShare}
-            baseLabel="Показ екрану"
-            labelOn="Показ екрану активний. Натисніть, щоб зупинити."
-            labelOff="Показ екрану вимкнений. Натисніть, щоб увімкнути."
+        </ul>
+        <div className="ua-controls-group ua-controls-group--left">
+          <StartMediaButton
             className="ua-button"
-            captureOptions={{ audio: true, selfBrowserSurface: 'include' }}
-            // aria-describedby={shareHintId}
+            data-variant="primary"
+            aria-describedby={unmuteHintId}
+            aria-label="Увімкнути звук і дозволити відтворення аудіо"
           >
-            Показати екран
+            Увімкнути звук
+          </StartMediaButton>
+          <AccessibleTrackToggle
+            source={Track.Source.Microphone}
+            baseLabel="Мікрофон"
+            labelOn="Мікрофон увімкнено. Натисніть, щоб вимкнути."
+            labelOff="Мікрофон вимкнено. Натисніть, щоб увімкнути."
+            className="ua-button"
+            aria-describedby={micHintId}
+          >
+            Мікрофон
           </AccessibleTrackToggle>
-        )}
-        <DisconnectButton
-          className="ua-button danger"
-          stopTracks
-          onClick={onLeave}
-          // aria-describedby={leaveHintId}
-          aria-label="Завершити трансляцію"
-        >
-          Завершення сеансу
-        </DisconnectButton>
+          <AccessibleTrackToggle
+            source={Track.Source.Camera}
+            baseLabel="Камера"
+            labelOn="Камера увімкнена. Натисніть, щоб вимкнути."
+            labelOff="Камера вимкнена. Натисніть, щоб увімкнути."
+            className="ua-button"
+            aria-describedby={camHintId}
+          >
+            Камера
+          </AccessibleTrackToggle>
+          <CameraSwitchButton descriptionId={switchHintId} onAvailabilityChange={setCanSwitchCamera} />
+        </div>
+        <div className="ua-controls-group ua-controls-group--center">
+          {agentControl && (
+            <button
+              type="button"
+              className="ua-button secondary agent-control"
+              onClick={agentControl.onClick}
+              disabled={agentControl.disabled}
+              aria-describedby={agentControlHintId}
+              aria-label={agentControl.ariaLabel}
+              data-agent-state={agentControl.state}
+            >
+              {agentControl.label}
+            </button>
+          )}
+        </div>
+        <div className="ua-controls-group ua-controls-group--right">
+          <DisconnectButton
+            className="ua-button danger"
+            stopTracks
+            onClick={onLeave}
+            aria-describedby={leaveHintId}
+            aria-label="Завершити трансляцію"
+          >
+            Завершення сеансу
+          </DisconnectButton>
+        </div>
       </div>
     </div>
   );
-}
-
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState<boolean>(() => detectMobileViewport());
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handleResize = () => {
-      setIsMobile(detectMobileViewport());
-    };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
-  }, []);
-
-  return isMobile;
 }
