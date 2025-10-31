@@ -1,4 +1,13 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useId } from 'react';
+import {
+  FormEvent,
+  forwardRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useId,
+} from 'react';
 import {
   DisconnectButton,
   GridLayout,
@@ -6,11 +15,13 @@ import {
   ParticipantTile,
   RoomAudioRenderer,
   StartMediaButton,
-  TrackToggle,
+  useTrackToggle,
   useParticipants,
   useRoomContext,
   useTracks,
 } from '@livekit/components-react';
+import type { TrackToggleProps } from '@livekit/components-react';
+import type { ToggleSource } from '@livekit/components-core';
 import { Room, RoomEvent, Track, facingModeFromDeviceLabel } from 'livekit-client';
 import '@livekit/components-styles';
 import './style.css';
@@ -81,6 +92,38 @@ function detectMobileViewport() {
   const uaMatch = /Mobi|Android|iPhone|iPad|Mobile|Silk/.test(userAgent);
   return uaMatch || window.innerWidth <= 768;
 }
+
+type LiveKitTrackToggleProps = TrackToggleProps<ToggleSource>;
+
+interface AccessibleTrackToggleProps extends LiveKitTrackToggleProps {
+  baseLabel: string;
+  labelOn?: string;
+  labelOff?: string;
+}
+
+const AccessibleTrackToggle = forwardRef<HTMLButtonElement, AccessibleTrackToggleProps>(
+  ({ baseLabel, labelOn, labelOff, children, ...rest }, ref) => {
+    const { buttonProps, enabled } = useTrackToggle(rest);
+    const providedLabel =
+      (rest as { ['aria-label']?: string })['aria-label'] ?? undefined;
+    const computedLabel =
+      providedLabel ??
+      (enabled
+        ? labelOn ?? `${baseLabel}. Зараз увімкнено`
+        : labelOff ?? `${baseLabel}. Зараз вимкнено`);
+    const mergedProps = {
+      ...buttonProps,
+      'aria-label': computedLabel,
+      'aria-pressed': enabled,
+      type: 'button' as const,
+    };
+    return (
+      <button {...mergedProps} ref={ref}>
+        {children ?? baseLabel}
+      </button>
+    );
+  },
+);
 
 function loadStoredTokenMap(): Record<string, string> {
   if (typeof window === 'undefined') {
@@ -589,7 +632,7 @@ export default function App() {
             <>
               <p>Натисніть нижче, щоб створити нову трансляцію і запросити людину-асистента.</p>
               <div className="actions">
-                <button type="button" onClick={handleCreateRoom}>
+                <button type="button" onClick={handleCreateRoom} aria-label="Створити трансляцію">
                   Створити трансляцію
                 </button>
               </div>
@@ -642,7 +685,7 @@ export default function App() {
                 )}
 
                 <div className="actions">
-                  <button type="submit" disabled={connecting}>
+                  <button type="submit" disabled={connecting} aria-label={connectButtonText}>
                     {connectButtonText}
                   </button>
                 </div>
@@ -938,22 +981,26 @@ function UkrainianConference({
         >
           Увімкнути звук
         </StartMediaButton>
-        <TrackToggle
+        <AccessibleTrackToggle
           source={Track.Source.Microphone}
+          baseLabel="Мікрофон"
+          labelOn="Мікрофон увімкнено. Натисніть, щоб вимкнути."
+          labelOff="Мікрофон вимкнено. Натисніть, щоб увімкнути."
           className="ua-button"
           aria-describedby={micHintId}
-          aria-label="Увімкнути або вимкнути мікрофон"
         >
           Мікрофон
-        </TrackToggle>
-        <TrackToggle
+        </AccessibleTrackToggle>
+        <AccessibleTrackToggle
           source={Track.Source.Camera}
+          baseLabel="Камера"
+          labelOn="Камера увімкнена. Натисніть, щоб вимкнути."
+          labelOff="Камера вимкнена. Натисніть, щоб увімкнути."
           className="ua-button"
           aria-describedby={camHintId}
-          aria-label="Увімкнути або вимкнути камеру"
         >
           Камера
-        </TrackToggle>
+        </AccessibleTrackToggle>
         <CameraSwitchButton descriptionId={switchHintId} onAvailabilityChange={setCanSwitchCamera} />
         {showInviteButton && (
           <button
@@ -985,15 +1032,17 @@ function UkrainianConference({
           </button>
         )}
         {!isMobile && (
-          <TrackToggle
+          <AccessibleTrackToggle
             source={Track.Source.ScreenShare}
+            baseLabel="Показ екрану"
+            labelOn="Показ екрану активний. Натисніть, щоб зупинити."
+            labelOff="Показ екрану вимкнений. Натисніть, щоб увімкнути."
             className="ua-button"
             captureOptions={{ audio: true, selfBrowserSurface: 'include' }}
             aria-describedby={shareHintId}
-            aria-label="Почати або зупинити показ екрана"
           >
             Показати екран
-          </TrackToggle>
+          </AccessibleTrackToggle>
         )}
         <DisconnectButton
           className="ua-button danger"
