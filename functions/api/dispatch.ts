@@ -15,7 +15,7 @@ interface RequestPayload {
 }
 
 async function readPayload(request: Request): Promise<RequestPayload> {
-  if (request.method === 'GET' || request.method === 'HEAD') {
+  if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'DELETE') {
     const url = new URL(request.url);
     const room = url.searchParams.get('room') ?? undefined;
     const rawMetadata = url.searchParams.get('metadata') ?? undefined;
