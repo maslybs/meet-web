@@ -49,6 +49,8 @@ function UkrainianConference({
   const agentControlHintId = useId();
   const leaveHintId = useId();
   const participants = useParticipants();
+  const tileCount = tracks.length;
+  const hasScreenShare = tracks.some((track) => track.source === Track.Source.ScreenShare);
   const agentParticipant = useMemo(
     () =>
       agentIdentity
@@ -84,7 +86,7 @@ function UkrainianConference({
           </div>
         )}
       </div>
-      <div className="ua-grid">
+      <div className="ua-grid" data-participant-count={tileCount} data-has-screenshare={hasScreenShare}>
         <GridLayout tracks={tracks}>
           <ParticipantTile />
         </GridLayout>

@@ -1,13 +1,6 @@
 import type { LiveKitEnv } from '../../src/server/livekit/env';
 import { createParticipantToken } from '../../src/server/livekit/jwt';
 
-function randomSuffix(length = 4) {
-  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
-}
-
 function assertEnvConfigured(env: LiveKitEnv): asserts env is Required<LiveKitEnv> {
   if (!env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET || !env.LIVEKIT_URL) {
     throw new Error('LiveKit environment not configured');
@@ -32,7 +25,7 @@ export const onRequest: PagesFunction<LiveKitEnv> = async ({ request, env }) => 
       return new Response('Missing room parameter', { status: 400 });
     }
 
-    const identity = `${name}-${randomSuffix()}`;
+    const identity = name.trim();
     const token = await createParticipantToken(env, room, identity);
 
     return Response.json({
