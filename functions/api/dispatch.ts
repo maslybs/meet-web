@@ -91,11 +91,7 @@ async function buildDispatchContext(env: Env, room: string): Promise<DispatchCon
   return { baseUrl, headers };
 }
 
-async function listAgentDispatches(
-  context: DispatchContext,
-  room: string,
-  agentName: string,
-): Promise<AgentDispatch[]> {
+async function listDispatches(context: DispatchContext, room: string): Promise<AgentDispatch[]> {
   const listRes = await fetch(`${context.baseUrl}/twirp/livekit.AgentDispatchService/ListDispatch`, {
     method: 'POST',
     headers: context.headers,
@@ -112,7 +108,16 @@ async function listAgentDispatches(
   }
 
   const data = await parseJson<{ agentDispatches?: AgentDispatch[] }>(listRes);
-  return (data.agentDispatches ?? []).filter((dispatch) => dispatch.agentName === agentName);
+  return data.agentDispatches ?? [];
+}
+
+async function listAgentDispatches(
+  context: DispatchContext,
+  room: string,
+  agentName: string,
+): Promise<AgentDispatch[]> {
+  const all = await listDispatches(context, room);
+  return all.filter((dispatch) => dispatch.agentName === agentName);
 }
 
 async function createAgentDispatch(
@@ -144,42 +149,30 @@ async function createAgentDispatch(
   return parseJson(createRes);
 }
 
-async function removeDispatch(env: Env, room: string, agentName: string) {
-  const context = await buildDispatchContext(env, room);
-
-  const listRes = await fetch(`${context.baseUrl}/twirp/livekit.AgentDispatchService/ListDispatch`, {
+async function deleteAgentDispatch(
+  context: DispatchContext,
+  room: string,
+  dispatchId: string,
+): Promise<void> {
+  const res = await fetch(`${context.baseUrl}/twirp/livekit.AgentDispatchService/DeleteDispatch`, {
     method: 'POST',
     headers: context.headers,
-    body: JSON.stringify({ room }),
+    body: JSON.stringify({ room, dispatchId }),
   });
 
-  if (!listRes.ok && listRes.status !== 404) {
-    const errBody = await listRes.text();
-    throw new Error(errBody || `ListDispatch failed with status ${listRes.status}`);
+  if (!res.ok && res.status !== 404) {
+    const errBody = await res.text();
+    throw new Error(errBody || `DeleteDispatch failed with status ${res.status}`);
   }
+}
 
-  if (!listRes.ok) {
-    return { removed: 0 };
-  }
-
-  const data = await parseJson<{ agentDispatches?: AgentDispatch[] }>(listRes);
-  const matches = (data.agentDispatches ?? []).filter(
-    (dispatch) => dispatch.agentName === agentName && dispatch.id,
-  );
+async function removeDispatch(env: Env, room: string, agentName: string) {
+  const context = await buildDispatchContext(env, room);
+  const all = await listDispatches(context, room);
+  const matches = all.filter((dispatch) => dispatch.agentName === agentName && dispatch.id);
 
   await Promise.all(
-    matches.map((dispatch) =>
-      fetch(`${context.baseUrl}/twirp/livekit.AgentDispatchService/DeleteDispatch`, {
-        method: 'POST',
-        headers: context.headers,
-        body: JSON.stringify({ room, dispatchId: dispatch.id }),
-      }).then(async (res) => {
-        if (!res.ok && res.status !== 404) {
-          const errBody = await res.text();
-          throw new Error(errBody || `DeleteDispatch failed with status ${res.status}`);
-        }
-      }),
-    ),
+    matches.map((dispatch) => deleteAgentDispatch(context, room, dispatch.id as string)),
   );
 
   return { removed: matches.length };
@@ -226,7 +219,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     return new Response('Missing LIVEKIT_AGENT_NAME', { status: 500 });
   }
 
-  if (method !== 'POST' && method !== 'DELETE') {
+  if (method !== 'POST' && method !== 'DELETE' && method !== 'GET') {
     return new Response('Method Not Allowed', { status: 405 });
   }
 
@@ -236,30 +229,54 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   try {
+    if (method === 'GET') {
+      const context = await buildDispatchContext(env, room);
+      const allDispatches = await listDispatches(context, room);
+      const ours = allDispatches.filter((dispatch) => dispatch.agentName === agentName);
+      const active = ours.find((dispatch) => {
+        const jobCount = dispatch.state?.jobs?.length ?? 0;
+        const deleted = Boolean(dispatch.state?.deletedAt);
+        return jobCount > 0 && !deleted;
+      });
+
+      return Response.json({
+        status: 'ok',
+        active: Boolean(active),
+        dispatch: active ?? null,
+        total: ours.length,
+      });
+    }
+
     if (method === 'POST') {
       const context = await buildDispatchContext(env, room);
-      const existingList = await listAgentDispatches(context, room, agentName);
+      const allDispatches = await listDispatches(context, room);
 
-      for (const existing of existingList) {
-        const jobCount = existing.state?.jobs?.length ?? 0;
-        const deleted = Boolean(existing.state?.deletedAt);
-        if (jobCount > 0 && !deleted) {
-          return Response.json({ status: 'ok', dispatch: existing, reused: true });
-        }
+      await Promise.all(
+        allDispatches
+          .filter((dispatch) => dispatch.agentName && dispatch.agentName !== agentName && dispatch.id)
+          .map((dispatch) => deleteAgentDispatch(context, room, dispatch.id as string)),
+      );
 
-        if (existing.id) {
-          await fetch(`${context.baseUrl}/twirp/livekit.AgentDispatchService/DeleteDispatch`, {
-            method: 'POST',
-            headers: context.headers,
-            body: JSON.stringify({ room, dispatchId: existing.id }),
-          }).catch((err) => {
-            console.warn('Failed to delete stale dispatch', err);
-          });
-        }
+      const existingList = allDispatches.filter((dispatch) => dispatch.agentName === agentName);
+
+      const active = existingList.find((dispatch) => {
+        const jobCount = dispatch.state?.jobs?.length ?? 0;
+        const deleted = Boolean(dispatch.state?.deletedAt);
+        return jobCount > 0 && !deleted;
+      });
+
+      if (active) {
+        return Response.json({ status: 'ok', dispatch: active, active: true, reused: true });
       }
 
+      await Promise.all(
+        existingList
+          .filter((dispatch) => dispatch.id)
+          .map((dispatch) => deleteAgentDispatch(context, room, dispatch.id as string)),
+      );
+
       const dispatch = await createAgentDispatch(context, room, agentName, metadata ?? undefined);
-      return Response.json({ status: 'ok', dispatch });
+      return Response.json({ status: 'ok', dispatch, active: true });
     }
 
     const result = await removeDispatch(env, room, agentName);

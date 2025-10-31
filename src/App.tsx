@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState, useId } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useId } from 'react';
 import {
   DisconnectButton,
   GridLayout,
@@ -24,7 +24,10 @@ interface AgentMetadata {
   roomName: string;
   participantName: string;
   gemini_api_key?: string;
+  multi_participant?: boolean;
 }
+
+type AgentStatus = 'idle' | 'requesting' | 'active' | 'paused' | 'error';
 
 const storedNameKey = 'camera-mother-name';
 const storedTokenMapKey = 'camera-mother-llm-tokens';
@@ -181,6 +184,10 @@ export default function App() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle');
+  const [agentMessage, setAgentMessage] = useState<string | null>(null);
+  const previousAgentStatusRef = useRef<AgentStatus>('idle');
+  const pauseRequestedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -224,6 +231,12 @@ export default function App() {
     window.history.replaceState(null, '', url.toString());
   }, [roomName]);
 
+  const trimmedRoom = roomName.trim();
+  const trimmedParticipantName = participantName.trim();
+  const trimmedToken = llmToken.trim();
+  const isConfiguredRoom = Boolean(configuredRoomName) && trimmedRoom === configuredRoomName;
+  const effectiveAgentToken = trimmedToken || (isConfiguredRoom ? configuredAgentToken : '');
+
   const shareLink = useMemo(() => {
     if (!roomName || typeof window === 'undefined') return '';
     const url = new URL(window.location.href);
@@ -240,10 +253,108 @@ export default function App() {
     [],
   );
 
+  const fetchAgentStatus = useCallback(async (): Promise<AgentStatus> => {
+    if (!trimmedRoom) {
+      setAgentStatus('idle');
+      setAgentMessage(null);
+      return 'idle';
+    }
+
+    try {
+      const response = await fetch(`/api/dispatch?room=${encodeURIComponent(trimmedRoom)}`);
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || 'Failed to fetch agent status');
+      }
+      const data = await response.json();
+      if (!data.active && pauseRequestedRef.current) {
+        setAgentStatus('paused');
+        return 'paused';
+      }
+      const nextStatus: AgentStatus = data.active ? 'active' : 'idle';
+      setAgentStatus(nextStatus);
+      if (nextStatus === 'active') {
+        setAgentMessage(null);
+      }
+      return nextStatus;
+    } catch (error) {
+      console.warn('fetchAgentStatus failed', error);
+      setAgentStatus('error');
+      setAgentMessage('Не вдалося отримати стан агента.');
+      return 'error';
+    }
+  }, [trimmedRoom]);
+
+  useEffect(() => {
+    if (!credentials || !trimmedRoom) {
+      setAgentStatus('idle');
+      setAgentMessage(null);
+      pauseRequestedRef.current = false;
+      return;
+    }
+    if (agentStatus === 'paused') {
+      if (!agentMessage) {
+        setAgentMessage('Агент на паузі.');
+      }
+      return;
+    }
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    let cancelled = false;
+
+    const poll = async () => {
+      if (cancelled) return;
+      await fetchAgentStatus();
+    };
+
+    void poll();
+    const interval = window.setInterval(() => {
+      void fetchAgentStatus();
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [credentials, trimmedRoom, agentStatus, fetchAgentStatus, agentMessage]);
+
+  useEffect(() => {
+    const previous = previousAgentStatusRef.current;
+    if (agentStatus === 'active' && previous !== 'active') {
+      setAgentMessage('Агент приєднався.');
+    } else if (agentStatus === 'paused' && previous !== 'paused') {
+      setAgentMessage('Агент на паузі.');
+    } else if (agentStatus === 'idle' && previous === 'active' && !pauseRequestedRef.current) {
+      setAgentMessage('Агент відʼєднався.');
+    }
+    if (agentStatus !== 'paused' && pauseRequestedRef.current && agentStatus !== 'requesting') {
+      pauseRequestedRef.current = false;
+    }
+    previousAgentStatusRef.current = agentStatus;
+  }, [agentStatus]);
+
   const showLlmTokenField = isCreator;
-  const readyToConnect = roomName.trim() !== '' && participantName.trim() !== '';
+  const canInviteAgent = Boolean(effectiveAgentToken) || isConfiguredRoom;
+  const readyToConnect = trimmedRoom !== '' && trimmedParticipantName !== '';
 
   const connectButtonText = connecting ? 'Зачекайте…' : isCreator ? 'Почати трансляцію' : 'Підключитися';
+  const inviteButtonLabel =
+    agentStatus === 'active'
+      ? 'Агент у кімнаті'
+      : agentStatus === 'requesting'
+      ? 'Запрошую…'
+      : agentStatus === 'paused'
+      ? 'Агент на паузі'
+      : agentStatus === 'error'
+      ? 'Спробувати ще раз'
+      : 'Запросити агента';
+  const pauseButtonLabel = agentStatus === 'paused' ? 'Активувати' : 'Пауза';
+  const inviteDisabled = !credentials || !canInviteAgent || agentStatus === 'requesting';
+  const showInviteButton = canInviteAgent && agentStatus !== 'active' && agentStatus !== 'paused';
+  const showPauseButton = agentStatus === 'active' || agentStatus === 'paused';
+  const pauseDisabled = !credentials || agentStatus === 'requesting';
 
   const handleCreateRoom = useCallback(() => {
     const generated = generateRoomName();
@@ -263,36 +374,16 @@ export default function App() {
       return;
     }
 
-    const trimmedRoom = roomName.trim();
-    const trimmedName = participantName.trim();
-    const trimmedToken = llmToken.trim();
-    const isConfiguredRoom = configuredRoomName && trimmedRoom === configuredRoomName;
-    const envTokenForRoom = isConfiguredRoom ? configuredAgentToken : '';
-    const effectiveToken = envTokenForRoom || trimmedToken;
-    const shouldUseAgent = Boolean(isConfiguredRoom || effectiveToken);
-
-    const metadata = shouldUseAgent
-      ? {
-          roomName: trimmedRoom,
-          participantName: trimmedName,
-          gemini_api_key: effectiveToken || undefined,
-        }
-      : undefined;
-
     try {
       setConnecting(true);
       setError(null);
-      setStatus(shouldUseAgent ? 'Активую асистента…' : 'Готую з’єднання…');
-      if (shouldUseAgent) {
-        await ensureAgentDispatch(trimmedRoom, metadata);
-      }
-      setStatus('Отримую токен…');
-      const tokenResp = await requestToken(trimmedRoom, trimmedName);
+      setStatus('Готую з’єднання…');
+      const tokenResp = await requestToken(trimmedRoom, trimmedParticipantName);
       setCredentials(tokenResp);
       setStatus('Трансляція активна.');
       if (trimmedRoom) {
         setTokenByRoom((prev) => {
-          if (trimmedToken) {
+          if (!isConfiguredRoom && trimmedToken) {
             if (prev[trimmedRoom] === trimmedToken) {
               return prev;
             }
@@ -306,6 +397,7 @@ export default function App() {
           return prev;
         });
       }
+      await fetchAgentStatus();
     } catch (err) {
       console.error(err);
       setCredentials(null);
@@ -319,7 +411,109 @@ export default function App() {
   const handleDisconnect = useCallback(() => {
     setCredentials(null);
     setStatus('З’єднання завершено.');
+    setAgentStatus('idle');
+    setAgentMessage(null);
+    pauseRequestedRef.current = false;
   }, []);
+
+  const ensureAgentActive = useCallback(
+    async (mode: 'invite' | 'resume') => {
+      if (!credentials) {
+        setAgentMessage('Спершу підключіться до кімнати.');
+        return;
+      }
+      if (!trimmedRoom) {
+        setAgentMessage('Спершу створіть або оберіть кімнату.');
+        return;
+      }
+      if (!effectiveAgentToken && !isConfiguredRoom) {
+        setAgentMessage('Щоб запросити агента, додайте LLM токен.');
+        return;
+      }
+
+      try {
+        pauseRequestedRef.current = false;
+        setAgentStatus('requesting');
+        setAgentMessage(mode === 'resume' ? 'Активую агента…' : 'Запрошую агента…');
+
+        const metadata: AgentMetadata = {
+          roomName: trimmedRoom,
+          participantName: trimmedParticipantName || 'Учасник',
+        };
+
+        if (effectiveAgentToken) {
+          metadata.gemini_api_key = effectiveAgentToken;
+        }
+        if (!isCreator) {
+          metadata.multi_participant = true;
+        }
+
+        await ensureAgentDispatch(trimmedRoom, metadata);
+        const status = await fetchAgentStatus();
+        if (status === 'idle') {
+          setAgentMessage('Очікую на підключення агента…');
+        }
+      } catch (error) {
+        console.error('ensureAgentActive failed', error);
+        setAgentStatus('error');
+        setAgentMessage(mode === 'resume' ? 'Не вдалося активувати агента.' : 'Не вдалося запросити агента.');
+      }
+    },
+    [
+      credentials,
+      trimmedRoom,
+      effectiveAgentToken,
+      isConfiguredRoom,
+      trimmedParticipantName,
+      isCreator,
+      fetchAgentStatus,
+    ],
+  );
+
+  const handleRequestAgent = useCallback(() => {
+    void ensureAgentActive('invite');
+  }, [ensureAgentActive]);
+
+  const handleToggleAgentListening = useCallback(async () => {
+    if (!credentials) {
+      setAgentMessage('Спершу підключіться до кімнати.');
+      return;
+    }
+    if (!trimmedRoom) {
+      setAgentMessage('Спершу створіть або оберіть кімнату.');
+      return;
+    }
+
+    if (agentStatus === 'paused') {
+      await ensureAgentActive('resume');
+      return;
+    }
+
+    if (agentStatus !== 'active') {
+      return;
+    }
+
+    try {
+      pauseRequestedRef.current = true;
+      setAgentStatus('requesting');
+      setAgentMessage('Призупиняю агента…');
+
+      const response = await fetch(`/api/dispatch?room=${encodeURIComponent(trimmedRoom)}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || 'Failed to pause agent');
+      }
+      setAgentStatus('paused');
+      setAgentMessage('Агент на паузі.');
+    } catch (error) {
+      console.error('handleToggleAgentListening failed', error);
+      pauseRequestedRef.current = false;
+      setAgentStatus('error');
+      setAgentMessage('Не вдалося призупинити агента.');
+    }
+  }, [agentStatus, credentials, ensureAgentActive, trimmedRoom]);
 
   return (
     <main className={`layout${credentials ? ' layout-room-active' : ''}`} data-lk-theme="default">
@@ -399,19 +593,42 @@ export default function App() {
 
       {credentials && (
         <section className="room-container" aria-label="Кімната відеозвʼязку">
+          <div className="room-toolbar">
+            <div className="room-toolbar__info">
+              <span>Кімната: <strong>{roomName}</strong></span>
+            </div>
+            {!canInviteAgent && (
+              <span className="hint">Щоб запросити агента, додайте LLM токен.</span>
+            )}
+          </div>
           <LiveKitRoom
             serverUrl={credentials.serverUrl}
             token={credentials.token}
             connect
             audio
             video
-            participantName={participantName.trim() || undefined}
             options={liveKitOptions}
             onDisconnected={handleDisconnect}
             style={{ height: '100%', width: '100%' }}
           >
-            <UkrainianConference onLeave={handleDisconnect} />
+            <UkrainianConference
+              onLeave={handleDisconnect}
+              onInviteAgent={handleRequestAgent}
+              onToggleAgent={handleToggleAgentListening}
+              inviteDisabled={inviteDisabled}
+              pauseDisabled={pauseDisabled}
+              inviteButtonLabel={inviteButtonLabel}
+              pauseButtonLabel={pauseButtonLabel}
+              showInviteButton={showInviteButton}
+              showPauseButton={showPauseButton}
+              agentStatus={agentStatus}
+            />
           </LiveKitRoom>
+          {agentMessage && (
+            <p className={`room-status-message ${agentStatus === 'error' ? 'error' : 'status-message'}`}>
+              {agentMessage}
+            </p>
+          )}
         </section>
       )}
     </main>
@@ -542,7 +759,29 @@ function CameraSwitchButton({
   );
 }
 
-function UkrainianConference({ onLeave }: { onLeave: () => void }) {
+function UkrainianConference({
+  onLeave,
+  onInviteAgent,
+  onToggleAgent,
+  inviteDisabled,
+  pauseDisabled,
+  inviteButtonLabel,
+  pauseButtonLabel,
+  showInviteButton,
+  showPauseButton,
+  agentStatus,
+}: {
+  onLeave: () => void;
+  onInviteAgent: () => void;
+  onToggleAgent: () => void | Promise<void>;
+  inviteDisabled: boolean;
+  pauseDisabled: boolean;
+  inviteButtonLabel: string;
+  pauseButtonLabel: string;
+  showInviteButton: boolean;
+  showPauseButton: boolean;
+  agentStatus: AgentStatus;
+}) {
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
@@ -556,6 +795,8 @@ function UkrainianConference({ onLeave }: { onLeave: () => void }) {
   const micHintId = useId();
   const camHintId = useId();
   const switchHintId = useId();
+  const inviteHintId = useId();
+  const pauseHintId = useId();
   const shareHintId = useId();
   const leaveHintId = useId();
 
@@ -575,6 +816,14 @@ function UkrainianConference({ onLeave }: { onLeave: () => void }) {
           <li id={micHintId}>Мікрофон: вмикає або вимикає ваш голос під час дзвінка.</li>
           <li id={camHintId}>Камера: показує або приховує ваше відео.</li>
           {canSwitchCamera && <li id={switchHintId}>Перемкнути камеру: вибирає іншу камеру вашого пристрою.</li>}
+          {showInviteButton && (
+            <li id={inviteHintId}>Запросити агента: додає асистента, щоб допомогти описувати події під час сеансу.</li>
+          )}
+          {showPauseButton && (
+            <li id={pauseHintId}>
+              Пауза агента: тимчасово вимикає агента; натисніть «Активувати», щоб знову дозволити йому слухати.
+            </li>
+          )}
           {!isMobile && (
             <li id={shareHintId}>
               Показати екран: передає зображення вашого екрана співрозмовнику (доступно лише на компʼютері).
@@ -607,6 +856,35 @@ function UkrainianConference({ onLeave }: { onLeave: () => void }) {
           Камера
         </TrackToggle>
         <CameraSwitchButton descriptionId={switchHintId} onAvailabilityChange={setCanSwitchCamera} />
+        {showInviteButton && (
+          <button
+            type="button"
+            className="ua-button secondary"
+            onClick={onInviteAgent}
+            disabled={inviteDisabled}
+            aria-describedby={inviteHintId}
+            aria-label="Запросити агента"
+          >
+            {inviteButtonLabel}
+          </button>
+        )}
+        {showPauseButton && (
+          <button
+            type="button"
+            className="ua-button secondary"
+            onClick={() => {
+              const result = onToggleAgent();
+              if (result instanceof Promise) {
+                void result;
+              }
+            }}
+            disabled={pauseDisabled}
+            aria-describedby={pauseHintId}
+            aria-label={agentStatus === 'paused' ? 'Активувати агента' : 'Призупинити агента'}
+          >
+            {pauseButtonLabel}
+          </button>
+        )}
         {!isMobile && (
           <TrackToggle
             source={Track.Source.ScreenShare}

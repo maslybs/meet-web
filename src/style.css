@@ -216,6 +216,11 @@ textarea {
   font-size: 0.95rem;
 }
 
+.room-status-message {
+  margin-top: 1rem;
+  text-align: center;
+}
+
 .hint {
   margin-top: -0.5rem;
   color: rgba(226, 232, 240, 0.75);
