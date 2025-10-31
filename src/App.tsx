@@ -7,6 +7,7 @@ import {
   RoomAudioRenderer,
   StartMediaButton,
   TrackToggle,
+  useParticipants,
   useRoomContext,
   useTracks,
 } from '@livekit/components-react';
@@ -33,6 +34,7 @@ const storedNameKey = 'camera-mother-name';
 const storedTokenMapKey = 'camera-mother-llm-tokens';
 const configuredRoomName = (import.meta.env.VITE_DEFAULT_ROOM ?? '').trim();
 const configuredAgentToken = (import.meta.env.VITE_DEFAULT_LLM_TOKEN ?? '').trim();
+const configuredAgentIdentity = (import.meta.env.VITE_AGENT_IDENTITY ?? '').trim();
 
 function randomSuffix(length = 6) {
   const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -186,6 +188,7 @@ export default function App() {
   const [connecting, setConnecting] = useState(false);
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle');
   const [agentMessage, setAgentMessage] = useState<string | null>(null);
+  const [agentIdentity, setAgentIdentity] = useState(() => configuredAgentIdentity);
   const previousAgentStatusRef = useRef<AgentStatus>('idle');
   const pauseRequestedRef = useRef(false);
 
@@ -267,13 +270,23 @@ export default function App() {
         throw new Error(message || 'Failed to fetch agent status');
       }
       const data = await response.json();
+      const dispatchAgentName =
+        data && typeof data === 'object' && data.dispatch && typeof data.dispatch.agentName === 'string'
+          ? (data.dispatch.agentName as string).trim()
+          : '';
+      if (dispatchAgentName) {
+        setAgentIdentity((prev) => (dispatchAgentName && dispatchAgentName !== prev ? dispatchAgentName : prev));
+      }
       if (!data.active && pauseRequestedRef.current) {
         setAgentStatus('paused');
+        setAgentMessage('Агент на паузі.');
         return 'paused';
       }
       const nextStatus: AgentStatus = data.active ? 'active' : 'idle';
       setAgentStatus(nextStatus);
       if (nextStatus === 'active') {
+        setAgentMessage((prev) => (prev && prev.includes('паузі') ? prev : 'Агент у кімнаті.'));
+      } else if (!pauseRequestedRef.current) {
         setAgentMessage(null);
       }
       return nextStatus;
@@ -352,7 +365,7 @@ export default function App() {
       : 'Запросити агента';
   const pauseButtonLabel = agentStatus === 'paused' ? 'Активувати' : 'Пауза';
   const inviteDisabled = !credentials || !canInviteAgent || agentStatus === 'requesting';
-  const showInviteButton = canInviteAgent && agentStatus !== 'active' && agentStatus !== 'paused';
+  const showInviteButton = canInviteAgent && (agentStatus === 'idle' || agentStatus === 'error');
   const showPauseButton = agentStatus === 'active' || agentStatus === 'paused';
   const pauseDisabled = !credentials || agentStatus === 'requesting';
   const showInviteHint = !canInviteAgent && isCreator;
@@ -438,6 +451,30 @@ export default function App() {
     void clearAgentDispatch();
   }, [clearAgentDispatch]);
 
+  const handleAgentPresenceChange = useCallback((present: boolean) => {
+    setAgentStatus((prev) => {
+      if (present) {
+        return prev === 'paused' ? 'paused' : 'active';
+      }
+      if (prev === 'active') {
+        return 'idle';
+      }
+      return prev;
+    });
+    setAgentMessage((prev) => {
+      if (present) {
+        return prev && prev.includes('паузі') ? prev : 'Агент у кімнаті.';
+      }
+      if (pauseRequestedRef.current) {
+        return prev && prev.includes('паузі') ? prev : 'Агент на паузі.';
+      }
+      if (prev && prev.includes('Агент у кімнаті')) {
+        return null;
+      }
+      return prev;
+    });
+  }, []);
+
   const ensureAgentActive = useCallback(
     async (mode: 'invite' | 'resume') => {
       if (!credentials) {
@@ -477,7 +514,7 @@ export default function App() {
         await ensureAgentDispatch(trimmedRoom, metadata);
         const status = await fetchAgentStatus();
         if (status === 'idle') {
-          setAgentMessage('Очікую на підключення агента…');
+          //setAgentMessage('Очікую на підключення агента…');
         }
       } catch (error) {
         console.error('ensureAgentActive failed', error);
@@ -643,6 +680,8 @@ export default function App() {
               showInviteHint={showInviteHint}
               roomName={roomName}
               agentMessage={agentMessage}
+              agentIdentity={agentIdentity}
+              onAgentPresenceChange={handleAgentPresenceChange}
               agentStatus={agentStatus}
             />
           </LiveKitRoom>
@@ -789,6 +828,8 @@ function UkrainianConference({
   showInviteHint,
   roomName,
   agentMessage,
+  agentIdentity,
+  onAgentPresenceChange,
   agentStatus,
 }: {
   onLeave: () => void;
@@ -803,6 +844,8 @@ function UkrainianConference({
   showInviteHint: boolean;
   roomName: string;
   agentMessage: string | null;
+  agentIdentity: string;
+  onAgentPresenceChange: (present: boolean) => void;
   agentStatus: AgentStatus;
 }) {
   const tracks = useTracks(
@@ -822,6 +865,18 @@ function UkrainianConference({
   const pauseHintId = useId();
   const shareHintId = useId();
   const leaveHintId = useId();
+  const participants = useParticipants();
+  const agentParticipant = useMemo(
+    () =>
+      agentIdentity
+        ? participants.find((participant) => participant.identity === agentIdentity) ?? null
+        : null,
+    [participants, agentIdentity],
+  );
+
+  useEffect(() => {
+    onAgentPresenceChange(Boolean(agentParticipant));
+  }, [agentParticipant, onAgentPresenceChange]);
 
   return (
     <div className="ua-conference">
