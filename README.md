@@ -1,4 +1,4 @@
-# Camera Mother — a simple LiveKit client on React
+# Meet Web — a simple LiveKit client on React
 
 This is a minimal SPA on `React + Vite` that allows you to conduct a private broadcast for a visually impaired user:
 
