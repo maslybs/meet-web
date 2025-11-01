@@ -251,7 +251,7 @@ textarea {
   overflow: hidden;
   /* box-shadow: 0 12px 28px rgba(6, 10, 22, 0.35); */
   width: 21%;
-    height: 20%;
+    /* height: 20%; */
 }
 
 .local-participant-container .lk-grid-layout {

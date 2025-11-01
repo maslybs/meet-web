@@ -162,7 +162,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle');
-  const [agentMessage, setAgentMessage] = useState<string | null>(null);
+  const [agentMessage] = useState<string | null>(null);
   const [agentIdentity, setAgentIdentity] = useState(() => configuredAgentIdentity);
   const previousAgentStatusRef = useRef<AgentStatus>('idle');
   const pauseRequestedRef = useRef(false);
@@ -233,8 +233,7 @@ export default function App() {
 
   const fetchAgentStatus = useCallback(async (): Promise<AgentStatus> => {
     if (!trimmedRoom) {
-      setAgentStatus('idle');
-      setAgentMessage(null);
+      setAgentStatus('idle'); 
       return 'idle';
     }
 
@@ -254,13 +253,11 @@ export default function App() {
       }
       if (pauseRequestedRef.current && !data.active) {
         setAgentStatus('paused');
-        setAgentMessage('Помічник на паузі.');
         return 'paused';
       }
       const agentPresent = Boolean(data?.agentPresent);
       if (!data.active && !agentPresent && pauseRequestedRef.current) {
         setAgentStatus('paused');
-        setAgentMessage('Помічник на паузі.');
         return 'paused';
       }
       if (agentPresent && !dispatchAgentName && configuredAgentIdentity) {
@@ -268,16 +265,11 @@ export default function App() {
       }
       const nextStatus: AgentStatus = data.active || agentPresent ? 'active' : 'idle';
       setAgentStatus(nextStatus);
-      if (nextStatus === 'active') {
-        setAgentMessage((prev: string | null) => (prev && prev.includes('паузі') ? prev : 'Помічник у кімнаті.'));
-      } else if (!pauseRequestedRef.current) {
-        setAgentMessage(null);
-      }
+    
       return nextStatus;
     } catch (error) {
       console.warn('fetchAgentStatus failed', error);
       setAgentStatus('error');
-      setAgentMessage('Не вдалося отримати стан помічника.');
       return 'error';
     }
   }, [trimmedRoom]);
@@ -285,14 +277,10 @@ export default function App() {
   useEffect(() => {
     if (!credentials || !trimmedRoom) {
       setAgentStatus('idle');
-      setAgentMessage(null);
       pauseRequestedRef.current = false;
       return;
     }
     if (agentStatus === 'paused') {
-      if (!agentMessage) {
-        setAgentMessage('Помічник на паузі.');
-      }
       return;
     }
     if (typeof window === 'undefined') {
@@ -319,13 +307,7 @@ export default function App() {
 
   useEffect(() => {
     const previous = previousAgentStatusRef.current;
-    if (agentStatus === 'active' && previous !== 'active') {
-      setAgentMessage('Помічник приєднався.');
-    } else if (agentStatus === 'paused' && previous !== 'paused') {
-      setAgentMessage('Помічник на паузі.');
-    } else if (agentStatus === 'idle' && previous === 'active' && !pauseRequestedRef.current) {
-      setAgentMessage('Помічник відʼєднався.');
-    }
+   
     if (agentStatus !== 'paused' && pauseRequestedRef.current && agentStatus !== 'requesting') {
       pauseRequestedRef.current = false;
     }
@@ -355,7 +337,6 @@ export default function App() {
         throw new Error(message || 'Failed to clear existing agent dispatch.');
       }
       setAgentStatus('idle');
-      setAgentMessage(null);
       pauseRequestedRef.current = false;
     } catch (error) {
       console.warn('clearAgentDispatch failed', error);
@@ -417,7 +398,6 @@ export default function App() {
     setCredentials(null);
     setStatus('З’єднання завершено.');
     setAgentStatus('idle');
-    setAgentMessage(null);
     pauseRequestedRef.current = false;
     void clearAgentDispatch();
   }, [clearAgentDispatch]);
@@ -438,43 +418,26 @@ export default function App() {
       }
       return prev;
     });
-    setAgentMessage((prev: string | null) => {
-      if (present) {
-        return prev && prev.includes('паузі') ? prev : 'Помічник у кімнаті.';
-      }
-      if (pauseRequestedRef.current) {
-        return prev && prev.includes('паузі') ? prev : 'Помічник на паузі.';
-      }
-      if (prev && prev.includes('Помічник у кімнаті')) {
-        return null;
-      }
-      return prev;
-    });
   }, [agentIdentity, configuredAgentIdentity]);
 
   const ensureAgentActive = useCallback(
     async (mode: 'invite' | 'resume') => {
-      if (!credentials) {
-        setAgentMessage('Спершу підключіться до кімнати.');
+      if (!credentials) { 
         return;
       }
-      if (!trimmedRoom) {
-        setAgentMessage('Спершу створіть або оберіть кімнату.');
+      if (!trimmedRoom) { 
         return;
       }
-      if (mode === 'invite' && (agentStatus === 'active' || agentStatus === 'paused')) {
-        setAgentMessage('Помічник уже підключений.');
+      if (mode === 'invite' && (agentStatus === 'active' || agentStatus === 'paused')) { 
         return;
       }
-      if (!effectiveAgentToken && !isConfiguredRoom) {
-        setAgentMessage('Щоб запросити помічника, додайте LLM токен.');
+      if (!effectiveAgentToken && !isConfiguredRoom) { 
         return;
       }
 
       try {
         pauseRequestedRef.current = false;
-        setAgentStatus('requesting');
-        setAgentMessage(mode === 'resume' ? 'Активую помічника…' : 'Запрошую помічника…');
+        setAgentStatus('requesting'); 
 
         const metadata: AgentMetadata = {
           roomName: trimmedRoom,
@@ -490,23 +453,17 @@ export default function App() {
 
         const dispatchResult = await ensureAgentDispatch(trimmedRoom, metadata);
         if (dispatchResult.agentPresent && dispatchResult.active) {
-          setAgentStatus('active');
-          setAgentMessage('Помічник уже в кімнаті.');
+          setAgentStatus('active'); 
           if (!dispatchResult.dispatch?.agentName && configuredAgentIdentity) {
             setAgentIdentity((prev: string) => prev || configuredAgentIdentity);
           }
           pauseRequestedRef.current = false;
           return;
         }
-
-        const status = await fetchAgentStatus();
-        if (status === 'idle') {
-          //setAgentMessage('Очікую на підключення помічника…');
-        }
+ 
       } catch (error) {
         console.error('ensureAgentActive failed', error);
-        setAgentStatus('error');
-        setAgentMessage(mode === 'resume' ? 'Не вдалося активувати помічника.' : 'Не вдалося запросити помічника.');
+        setAgentStatus('error'); 
       }
     },
     [
@@ -526,12 +483,10 @@ export default function App() {
   }, [ensureAgentActive]);
 
   const handleToggleAgentListening = useCallback(async () => {
-    if (!credentials) {
-      setAgentMessage('Спершу підключіться до кімнати.');
+    if (!credentials) { 
       return;
     }
-    if (!trimmedRoom) {
-      setAgentMessage('Спершу створіть або оберіть кімнату.');
+    if (!trimmedRoom) { 
       return;
     }
 
@@ -546,8 +501,7 @@ export default function App() {
 
     try {
       pauseRequestedRef.current = true;
-      setAgentStatus('requesting');
-      setAgentMessage('Призупиняю помічника…');
+      setAgentStatus('requesting'); 
 
       const response = await fetch(`/api/dispatch?room=${encodeURIComponent(trimmedRoom)}`, {
         method: 'DELETE',
@@ -560,8 +514,7 @@ export default function App() {
     } catch (error) {
       console.error('handleToggleAgentListening failed', error);
       pauseRequestedRef.current = false;
-      setAgentStatus('error');
-      setAgentMessage('Не вдалося призупинити помічника.');
+      setAgentStatus('error'); 
     }
   }, [agentStatus, credentials, ensureAgentActive, trimmedRoom]);
 
