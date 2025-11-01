@@ -1,4 +1,4 @@
-name = "camera-mother"
+name = "meet-web"
 pages_build_output_dir = "dist"
 
 [vars]

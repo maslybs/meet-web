@@ -19,8 +19,8 @@ interface AgentMetadata {
   multi_participant?: boolean;
 }
 
-const storedNameKey = 'camera-mother-name';
-const storedTokenMapKey = 'camera-mother-llm-tokens';
+const storedNameKey = 'meet-web-name';
+const storedTokenMapKey = 'meet-web-llm-tokens';
 const configuredRoomName = (import.meta.env.VITE_DEFAULT_ROOM ?? '').trim();
 const configuredAgentToken = (import.meta.env.VITE_DEFAULT_LLM_TOKEN ?? '').trim();
 const configuredAgentIdentity = (import.meta.env.VITE_AGENT_IDENTITY ?? '').trim();
