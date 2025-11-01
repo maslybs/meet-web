@@ -263,8 +263,11 @@ export default function App() {
       if (agentPresent && !dispatchAgentName && configuredAgentIdentity) {
         setAgentIdentity((prev: string) => prev || configuredAgentIdentity);
       }
+
       const nextStatus: AgentStatus = data.active || agentPresent ? 'active' : 'idle';
       setAgentStatus(nextStatus);
+
+     
     
       return nextStatus;
     } catch (error) {
@@ -297,7 +300,7 @@ export default function App() {
     void poll();
     const interval = window.setInterval(() => {
       void fetchAgentStatus();
-    }, 15000);
+    }, 5000);
 
     return () => {
       cancelled = true;
@@ -519,65 +522,21 @@ export default function App() {
   }, [agentStatus, credentials, ensureAgentActive, trimmedRoom]);
 
   const agentControl = useMemo<AgentControlConfig | null>(() => {
-    switch (agentStatus) {
-      case 'active':
-        return {
-          label: 'Пауза помічника',
-          ariaLabel: 'Поставити помічника на паузу, щоб він не чув користувачів',
-          disabled: pauseDisabled,
-          onClick: handleToggleAgentListening,
-          hint: 'Пауза помічника: тимчасово вимикає звук для нього, щоб він не чув учасників.',
-          state: 'pause',
-        };
-      case 'paused':
-        return {
-          label: 'Активувати помічника',
-          ariaLabel: 'Активувати помічника, щоб він знову чув користувачів',
-          disabled: pauseDisabled,
-          onClick: handleToggleAgentListening,
-          hint: 'Активувати помічника: знову вмикає звук для помічника.',
-          state: 'resume',
-        };
-      case 'requesting': {
-        const label = isPausingRequest ? 'Призупиняю…' : 'Запрошую…';
-        return {
-          label,
-          ariaLabel: `${label} Зачекайте.`,
-          disabled: true,
-          onClick: isPausingRequest ? handleToggleAgentListening : handleRequestAgent,
-          hint: isPausingRequest
-            ? 'Призупиняю помічника: вимикаю для нього звук.'
-            : 'Запрошую помічника до кімнати, зачекайте кілька секунд.',
-          state: 'requesting',
-        };
-      }
-      case 'error':
+ 
+      if(agentStatus === 'idle'){
         if (!canInviteAgent) {
           return null;
         }
         return {
           label: 'Запросити помічника',
-          ariaLabel: 'Спробувати ще раз запросити помічника',
-          disabled: inviteDisabled,
-          onClick: handleRequestAgent,
-          hint: 'Повторно запросити помічника до кімнати.',
-          state: 'error',
-        };
-      case 'idle':
-        if (!canInviteAgent) {
-          return null;
-        }
-        return {
-          label: 'Запросити помічника',
-          ariaLabel: 'Запросити помічника до кімнати',
+          ariaLabel: 'Запросити ШІ помічника до кімнати',
           disabled: inviteDisabled,
           onClick: handleRequestAgent,
           hint: 'Запросити помічника: додає асистента, який допомагатиме користувачеві.',
           state: 'invite',
         };
-      default:
-        return null;
-    }
+      }
+
   }, [
     agentStatus,
     canInviteAgent,
@@ -596,9 +555,11 @@ export default function App() {
         <section className="card" aria-live="polite">
           <h1>{!roomName ? 'Створити трансляцію' : 'Вітаю' } {participantName}</h1>
 
+          {status && <p className="status-message">{status}</p>}
+
           {!roomName ? (
             <>
-              <p>Натисніть нижче, щоб створити нову трансляцію і запросити людину-асистента.</p>
+              <p>Натисніть нижче, щоб створити нову трансляцію і запросити помічника.</p>
               <div className="actions">
                 <button type="button" onClick={handleCreateRoom} aria-label="Створити трансляцію">
                   Створити трансляцію
@@ -666,7 +627,7 @@ export default function App() {
             </>
           )}
 
-          {status && <p className="status-message">{status}</p>}
+          
           {error && <p className="error">{error}</p>}
         </section>
       )}
