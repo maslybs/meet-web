@@ -92,7 +92,10 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
       const ours = allDispatches.filter((dispatch) => dispatch.agentName === agentName);
       const active = ours.find(isActiveDispatch) ?? null;
       const participants = await listParticipants(context, room);
-      const agentPresent = participants.some((participant) => participant.identity === agentName);
+      const agentPresent = participants.some((participant) => {
+        const identity = (participant.identity ?? '').trim();
+        return identity === agentName || identity.startsWith('agent-');
+      });
 
       return Response.json({
         status: 'ok',
@@ -108,7 +111,10 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
       const allDispatches = await listDispatches(context, room);
 
       const participants = await listParticipants(context, room);
-      const agentPresent = participants.some((participant) => participant.identity === agentName);
+      const agentPresent = participants.some((participant) => {
+        const identity = (participant.identity ?? '').trim();
+        return identity === agentName || identity.startsWith('agent-');
+      });
 
       // Remove other agents' dispatches to avoid conflicts.
       await Promise.all(

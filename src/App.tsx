@@ -415,7 +415,13 @@ export default function App() {
     void clearAgentDispatch();
   }, [clearAgentDispatch]);
 
-  const handleAgentPresenceChange = useCallback((present: boolean) => {
+  const handleAgentPresenceChange = useCallback((present: boolean, identity?: string | null) => {
+    if (present && identity) {
+      setAgentIdentity(identity);
+    }
+    if (!present && identity && agentIdentity === identity) {
+      setAgentIdentity(configuredAgentIdentity);
+    }
     setAgentStatus((prev) => {
       if (present) {
         return prev === 'paused' ? 'paused' : 'active';
@@ -437,7 +443,7 @@ export default function App() {
       }
       return prev;
     });
-  }, []);
+  }, [agentIdentity, configuredAgentIdentity]);
 
   const ensureAgentActive = useCallback(
     async (mode: 'invite' | 'resume') => {
