@@ -1,45 +1,45 @@
-# Camera Mother — простий LiveKit клієнт на React
+# Camera Mother — a simple LiveKit client on React
 
-Це мінімальний SPA на `React + Vite`, що дозволяє вести приватну трансляцію для незрячого користувача:
+This is a minimal SPA on `React + Vite` that allows you to conduct a private broadcast for a visually impaired user:
 
-- На головній сторінці вводите LiveKit URL і токен, отриманий у [Playground](https://livekit.io/api/playground).
-- Натискаєте “Підключитися” — зʼявляється стандартний блок LiveKit із камерою, мікрофоном і чатом.
-- Кнопкою “Відʼєднатися” можна завершити сесію.
+- On the main page, enter the LiveKit URL and token obtained from the [Playground](https://livekit.io/api/playground).
+- Click "Connect" — a standard LiveKit block appears with a camera, microphone, and chat.
+- The "Disconnect" button allows you to end the session.
 
-## Локальний запуск
+## Local Launch
 
 ```bash
 npm install
 npm run dev
 ```
 
-Сайт відкриється на http://localhost:5173.
+The site will open at http://localhost:5173.
 
-## Білд
+## Build
 
 ```bash
 npm run build
 ```
 
-Готові файли будуть у каталозі `dist/`.
+The ready files will be in the `dist/` directory.
 
-## Деплой на Cloudflare Pages
+## Deploy to Cloudflare Pages
 
-1. Додайте ключі як секрети (CLI або Dashboard):
+1. Add keys as secrets (CLI or Dashboard):
    ```bash
    wrangler secret put LIVEKIT_API_KEY
    wrangler secret put LIVEKIT_API_SECRET
    wrangler secret put LIVEKIT_URL
    ```
-2. Зберіть та опублікуйте:
+2. Build and publish:
    ```bash
    npm run build
    wrangler pages deploy dist
    ```
 
-## Де взяти токен LiveKit?
-- У LiveKit Cloud створіть API ключ і секрет.
-- Згенеруйте JWT у playground або власній функції.
-- Вставте URL та токен у форму на головній сторінці — і підключайтесь.
+## Where to get a LiveKit token?
+- In LiveKit Cloud, create an API key and secret.
+- Generate a JWT in the playground or your own function.
+- Insert the URL and token into the form on the main page — and connect.
 
-Функція `functions/api/token.ts` демонструє, як підписати токен на Cloudflare Pages без `livekit-server-sdk` (через Web Crypto / HMAC-SHA256).
+The `functions/api/token.ts` function demonstrates how to sign a token on Cloudflare Pages without `livekit-server-sdk` (via Web Crypto / HMAC-SHA256).
