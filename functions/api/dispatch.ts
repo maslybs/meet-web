@@ -5,6 +5,7 @@ import {
   deleteAgentDispatch,
   listAgentDispatches,
   listDispatches,
+  listParticipants,
   removeAgentDispatch,
 } from '../../src/server/livekit/dispatch';
 import type { AgentDispatch } from '../../src/server/livekit/dispatch';
@@ -52,11 +53,16 @@ function isActiveDispatch(dispatch: AgentDispatch): boolean {
   return jobCount > 0 && !deleted;
 }
 
+function getConfiguredAgentName(env: LiveKitAgentEnv): string | undefined {
+  const candidate = env.LIVEKIT_AGENT_NAME ?? env.VOICE_AGENT_NAME;
+  return candidate && candidate.trim() ? candidate.trim() : undefined;
+}
+
 function assertEnvConfigured(env: LiveKitAgentEnv): asserts env is Required<LiveKitAgentEnv> {
   if (!env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET || !env.LIVEKIT_URL) {
     throw new Error('LiveKit environment not configured');
   }
-  if (!env.LIVEKIT_AGENT_NAME) {
+  if (!getConfiguredAgentName(env)) {
     throw new Error('Missing LIVEKIT_AGENT_NAME');
   }
 }
@@ -73,7 +79,7 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
     return new Response(error instanceof Error ? error.message : 'Environment not configured', { status: 500 });
   }
 
-  const agentName = env.LIVEKIT_AGENT_NAME.trim();
+  const agentName = getConfiguredAgentName(env)!;
   const { room, metadata } = await readPayload(request);
   if (!room) {
     return new Response('Missing required room parameter', { status: 400 });
@@ -85,10 +91,13 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
       const allDispatches = await listDispatches(context, room);
       const ours = allDispatches.filter((dispatch) => dispatch.agentName === agentName);
       const active = ours.find(isActiveDispatch) ?? null;
+      const participants = await listParticipants(context, room);
+      const agentPresent = participants.some((participant) => participant.identity === agentName);
 
       return Response.json({
         status: 'ok',
         active: Boolean(active),
+        agentPresent,
         dispatch: active,
         total: ours.length,
       });
@@ -97,6 +106,9 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
     if (method === 'POST') {
       const context = await buildDispatchContext(env, room);
       const allDispatches = await listDispatches(context, room);
+
+      const participants = await listParticipants(context, room);
+      const agentPresent = participants.some((participant) => participant.identity === agentName);
 
       // Remove other agents' dispatches to avoid conflicts.
       await Promise.all(
@@ -108,7 +120,23 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
       const existing = await listAgentDispatches(context, room, agentName);
       const activeExisting = existing.find(isActiveDispatch);
       if (activeExisting) {
-        return Response.json({ status: 'ok', dispatch: activeExisting, active: true, reused: true });
+        return Response.json({
+          status: 'ok',
+          dispatch: activeExisting,
+          active: true,
+          reused: true,
+          agentPresent,
+        });
+      }
+
+      if (agentPresent) {
+        return Response.json({
+          status: 'ok',
+          dispatch: null,
+          active: true,
+          reused: true,
+          agentPresent: true,
+        });
       }
 
       // Clean up any stale dispatches for this agent before creating a new one.
@@ -119,7 +147,7 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
       );
 
       const dispatch = await createAgentDispatch(context, room, agentName, metadata);
-      return Response.json({ status: 'ok', dispatch, active: true });
+      return Response.json({ status: 'ok', dispatch, active: true, agentPresent: false });
     }
 
     const result = await removeAgentDispatch(env, room, agentName);

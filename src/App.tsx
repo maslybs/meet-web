@@ -67,7 +67,15 @@ function loadStoredTokenMap(): Record<string, string> {
   }
 }
 
-async function ensureAgentDispatch(room: string, metadata?: AgentMetadata) {
+type DispatchResponse = {
+  status?: string;
+  active?: boolean;
+  reused?: boolean;
+  agentPresent?: boolean;
+  dispatch?: { agentName?: string | null } | null;
+};
+
+async function ensureAgentDispatch(room: string, metadata?: AgentMetadata): Promise<DispatchResponse> {
   try {
     const response = await fetch('/api/dispatch', {
       method: 'POST',
@@ -80,9 +88,17 @@ async function ensureAgentDispatch(room: string, metadata?: AgentMetadata) {
             : undefined,
       }),
     });
+    const text = await response.text();
     if (!response.ok) {
-      const message = await response.text();
-      throw new Error(message || `Не вдалося активувати асистента (код ${response.status}).`);
+      throw new Error(text || `Не вдалося активувати асистента (код ${response.status}).`);
+    }
+    if (!text.trim()) {
+      return {};
+    }
+    try {
+      return JSON.parse(text) as DispatchResponse;
+    } catch {
+      return {};
     }
   } catch (error) {
     console.warn('ensureAgentDispatch failed', error);
@@ -234,12 +250,16 @@ export default function App() {
       if (dispatchAgentName) {
         setAgentIdentity((prev: string) => (dispatchAgentName && dispatchAgentName !== prev ? dispatchAgentName : prev));
       }
-      if (!data.active && pauseRequestedRef.current) {
+      const agentPresent = Boolean(data?.agentPresent);
+      if (!data.active && !agentPresent && pauseRequestedRef.current) {
         setAgentStatus('paused');
         setAgentMessage('Агент на паузі.');
         return 'paused';
       }
-      const nextStatus: AgentStatus = data.active ? 'active' : 'idle';
+      if (agentPresent && !dispatchAgentName && configuredAgentIdentity) {
+        setAgentIdentity((prev: string) => prev || configuredAgentIdentity);
+      }
+      const nextStatus: AgentStatus = data.active || agentPresent ? 'active' : 'idle';
       setAgentStatus(nextStatus);
       if (nextStatus === 'active') {
         setAgentMessage((prev: string | null) => (prev && prev.includes('паузі') ? prev : 'Агент у кімнаті.'));
@@ -376,7 +396,6 @@ export default function App() {
           return prev;
         });
       }
-      await clearAgentDispatch();
     } catch (err) {
       console.error(err);
       setCredentials(null);
@@ -456,7 +475,17 @@ export default function App() {
           metadata.multi_participant = true;
         }
 
-        await ensureAgentDispatch(trimmedRoom, metadata);
+        const dispatchResult = await ensureAgentDispatch(trimmedRoom, metadata);
+        if (dispatchResult.agentPresent && dispatchResult.active) {
+          setAgentStatus('active');
+          setAgentMessage('Агент уже в кімнаті.');
+          if (!dispatchResult.dispatch?.agentName && configuredAgentIdentity) {
+            setAgentIdentity((prev: string) => prev || configuredAgentIdentity);
+          }
+          pauseRequestedRef.current = false;
+          return;
+        }
+
         const status = await fetchAgentStatus();
         if (status === 'idle') {
           //setAgentMessage('Очікую на підключення агента…');

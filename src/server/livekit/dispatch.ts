@@ -18,6 +18,11 @@ export interface AgentDispatch {
   state?: AgentDispatchState;
 }
 
+export interface RoomParticipant {
+  identity?: string;
+  state?: Record<string, unknown> | null;
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   const text = await res.text();
   if (!text.trim()) {
@@ -113,4 +118,24 @@ export async function removeAgentDispatch(env: LiveKitEnv, room: string, agentNa
   );
 
   return { removed: matches.length };
+}
+
+export async function listParticipants(context: DispatchContext, room: string): Promise<RoomParticipant[]> {
+  const res = await fetch(`${context.baseUrl}/twirp/livekit.RoomService/ListParticipants`, {
+    method: 'POST',
+    headers: context.headers,
+    body: JSON.stringify({ room }),
+  });
+
+  if (!res.ok && res.status !== 404) {
+    const errBody = await res.text();
+    throw new Error(errBody || `ListParticipants failed with status ${res.status}`);
+  }
+
+  if (!res.ok) {
+    return [];
+  }
+
+  const data = await parseJson<{ participants?: RoomParticipant[] }>(res);
+  return data.participants ?? [];
 }

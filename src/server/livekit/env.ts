@@ -6,4 +6,5 @@ export interface LiveKitEnv {
 
 export interface LiveKitAgentEnv extends LiveKitEnv {
   LIVEKIT_AGENT_NAME?: string;
+  VOICE_AGENT_NAME?: string;
 }
