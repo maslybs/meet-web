@@ -667,18 +667,16 @@ export default function App() {
               )}
 
               <form className="inputs" onSubmit={handleSubmit}>
-                {!trimmedParticipantName && (
-                  <label>
-                    Ваше імʼя
-                    <input
-                      type="text"
-                      required
-                      value={participantName}
-                      placeholder="Наприклад, Олексій"
-                      onChange={(event) => setParticipantName(event.target.value)}
-                    />
-                  </label>
-                )}
+                <label>
+                  Ваше імʼя
+                  <input
+                    type="text"
+                    required
+                    value={participantName}
+                    placeholder="Наприклад, Олексій"
+                    onChange={(event) => setParticipantName(event.target.value)}
+                  />
+                </label>
 
                 {showLlmTokenField && (
                   <>

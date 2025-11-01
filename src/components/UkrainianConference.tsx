@@ -49,6 +49,14 @@ function UkrainianConference({
   const agentControlHintId = useId();
   const leaveHintId = useId();
   const participants = useParticipants();
+  const remoteTracks = useMemo(
+    () => tracks.filter((track) => !track.participant.isLocal),
+    [tracks],
+  );
+  const localTracks = useMemo(
+    () => tracks.filter((track) => track.participant.isLocal),
+    [tracks],
+  );
   const tileCount = tracks.length;
   const hasScreenShare = tracks.some((track) => track.source === Track.Source.ScreenShare);
   const agentParticipant = useMemo(
@@ -87,9 +95,16 @@ function UkrainianConference({
         )}
       </div>
       <div className="ua-grid" data-participant-count={tileCount} data-has-screenshare={hasScreenShare}>
-        <GridLayout tracks={tracks}>
+        <GridLayout tracks={remoteTracks}>
           <ParticipantTile />
         </GridLayout>
+        {localTracks.length > 0 && (
+          <div className="local-participant-container">
+            <GridLayout tracks={localTracks}>
+              <ParticipantTile />
+            </GridLayout>
+          </div>
+        )}
       </div>
       <div className="ua-controls">
         <ul className="sr-only" aria-label="Опис кнопок керування конференцією">

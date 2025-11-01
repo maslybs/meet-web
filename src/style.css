@@ -174,7 +174,7 @@ textarea {
 .ua-conference {
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto 60vh auto;
   min-height: 100%;
   background: rgba(8, 13, 24, 0.4);
 }
@@ -232,9 +232,42 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 0;
+  height: 100%;
   padding: 1.25rem 1.5rem;
   overflow: hidden;
+  overflow-y: auto;
+  position: relative;
+}
+
+.local-participant-container {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: clamp(160px, 18vw, 240px);
+  height: auto;
+  aspect-ratio: 4 / 3;
+  z-index: 10;
+  border-radius: 1.1rem;
+  overflow: hidden;
+  box-shadow: 0 12px 28px rgba(6, 10, 22, 0.35);
+}
+
+.local-participant-container .lk-grid-layout {
+  padding: 0;
+  gap: 0;
+}
+
+.local-participant-container .lk-participant-tile {
+  margin: 0;
+  box-shadow: none;
+}
+
+@media (max-width: 768px) {
+  .local-participant-container {
+    width: clamp(120px, 25vw, 160px);
+    top: 0.75rem;
+    right: 0.75rem;
+  }
 }
 
 .ua-grid .lk-grid-layout {
@@ -252,6 +285,7 @@ textarea {
 
 .ua-grid .lk-participant-tile {
   width: 100%;
+  height: 90%;
   aspect-ratio: 16 / 10;
   border-radius: 1.1rem;
   overflow: hidden;
@@ -272,12 +306,7 @@ textarea {
   object-fit: cover;
 }
 
-.ua-grid .lk-participant-tile[data-lk-local-participant='true'],
-.ua-grid .lk-participant-tile[data-local-participant='true'] {
-  max-width: clamp(160px, 18vw, 240px);
-  aspect-ratio: 4 / 3;
-  box-shadow: 0 12px 28px rgba(6, 10, 22, 0.35);
-}
+
 
 .ua-grid .lk-participant-tile[data-lk-source='screen_share'] {
   grid-column: span 2;
@@ -503,16 +532,7 @@ button:disabled {
   grid-auto-rows: auto;
 }
 
-.ua-grid[data-participant-count='1'] .lk-participant-tile[data-lk-local-participant='true'],
-.ua-grid[data-participant-count='1'] .lk-participant-tile[data-local-participant='true'] {
-  justify-self: end;
-  align-self: end;
-  width: clamp(160px, 24vw, 240px);
-  aspect-ratio: 4 / 3;
-  margin: 0 1.5rem 1.5rem;
-  border-radius: 0.9rem;
-  box-shadow: 0 10px 30px rgba(6, 10, 22, 0.45);
-}
+
 
 .ua-grid[data-participant-count='2'] .lk-grid-layout,
 .ua-grid[data-participant-count='3'] .lk-grid-layout {
@@ -540,14 +560,7 @@ button:disabled {
     grid-auto-rows: auto;
     gap: 0.75rem;
   }
-  .ua-grid[data-participant-count='1'] .lk-participant-tile[data-lk-local-participant='true'],
-  .ua-grid[data-participant-count='1'] .lk-participant-tile[data-local-participant='true'] {
-    justify-self: center;
-    align-self: center;
-    width: 100%;
-    margin: 0;
-    aspect-ratio: 3 / 4;
-  }
+
   .ua-controls-group--left .ua-button {
     flex: 1 1 100%;
     min-width: auto;
