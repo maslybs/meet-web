@@ -140,10 +140,12 @@ export default function App() {
 
   const [roomName, setRoomName] = useState(() => initialRoom);
   const [isCreator, setIsCreator] = useState(() => !initialRoom);
-  const [participantName, setParticipantName] = useState(() => {
+  const initialParticipantNameFromStorage = useMemo(() => {
     if (typeof window === 'undefined') return '';
     return window.localStorage.getItem(storedNameKey) ?? '';
-  });
+  }, []);
+
+  const [participantName, setParticipantName] = useState(initialParticipantNameFromStorage);
   const [tokenByRoom, setTokenByRoom] = useState<Record<string, string>>(() => loadStoredTokenMap());
   const [llmToken, setLlmToken] = useState(() => {
     if (!initialRoom) {
@@ -250,10 +252,15 @@ export default function App() {
       if (dispatchAgentName) {
         setAgentIdentity((prev: string) => (dispatchAgentName && dispatchAgentName !== prev ? dispatchAgentName : prev));
       }
+      if (pauseRequestedRef.current && !data.active) {
+        setAgentStatus('paused');
+        setAgentMessage('Помічник на паузі.');
+        return 'paused';
+      }
       const agentPresent = Boolean(data?.agentPresent);
       if (!data.active && !agentPresent && pauseRequestedRef.current) {
         setAgentStatus('paused');
-        setAgentMessage('Агент на паузі.');
+        setAgentMessage('Помічник на паузі.');
         return 'paused';
       }
       if (agentPresent && !dispatchAgentName && configuredAgentIdentity) {
@@ -262,7 +269,7 @@ export default function App() {
       const nextStatus: AgentStatus = data.active || agentPresent ? 'active' : 'idle';
       setAgentStatus(nextStatus);
       if (nextStatus === 'active') {
-        setAgentMessage((prev: string | null) => (prev && prev.includes('паузі') ? prev : 'Агент у кімнаті.'));
+        setAgentMessage((prev: string | null) => (prev && prev.includes('паузі') ? prev : 'Помічник у кімнаті.'));
       } else if (!pauseRequestedRef.current) {
         setAgentMessage(null);
       }
@@ -270,7 +277,7 @@ export default function App() {
     } catch (error) {
       console.warn('fetchAgentStatus failed', error);
       setAgentStatus('error');
-      setAgentMessage('Не вдалося отримати стан агента.');
+      setAgentMessage('Не вдалося отримати стан помічника.');
       return 'error';
     }
   }, [trimmedRoom]);
@@ -284,7 +291,7 @@ export default function App() {
     }
     if (agentStatus === 'paused') {
       if (!agentMessage) {
-        setAgentMessage('Агент на паузі.');
+        setAgentMessage('Помічник на паузі.');
       }
       return;
     }
@@ -313,11 +320,11 @@ export default function App() {
   useEffect(() => {
     const previous = previousAgentStatusRef.current;
     if (agentStatus === 'active' && previous !== 'active') {
-      setAgentMessage('Агент приєднався.');
+      setAgentMessage('Помічник приєднався.');
     } else if (agentStatus === 'paused' && previous !== 'paused') {
-      setAgentMessage('Агент на паузі.');
+      setAgentMessage('Помічник на паузі.');
     } else if (agentStatus === 'idle' && previous === 'active' && !pauseRequestedRef.current) {
-      setAgentMessage('Агент відʼєднався.');
+      setAgentMessage('Помічник відʼєднався.');
     }
     if (agentStatus !== 'paused' && pauseRequestedRef.current && agentStatus !== 'requesting') {
       pauseRequestedRef.current = false;
@@ -424,7 +431,7 @@ export default function App() {
     }
     setAgentStatus((prev) => {
       if (present) {
-        return prev === 'paused' ? 'paused' : 'active';
+        return 'active';
       }
       if (prev === 'active') {
         return 'idle';
@@ -433,12 +440,12 @@ export default function App() {
     });
     setAgentMessage((prev: string | null) => {
       if (present) {
-        return prev && prev.includes('паузі') ? prev : 'Агент у кімнаті.';
+        return prev && prev.includes('паузі') ? prev : 'Помічник у кімнаті.';
       }
       if (pauseRequestedRef.current) {
-        return prev && prev.includes('паузі') ? prev : 'Агент на паузі.';
+        return prev && prev.includes('паузі') ? prev : 'Помічник на паузі.';
       }
-      if (prev && prev.includes('Агент у кімнаті')) {
+      if (prev && prev.includes('Помічник у кімнаті')) {
         return null;
       }
       return prev;
@@ -456,18 +463,18 @@ export default function App() {
         return;
       }
       if (mode === 'invite' && (agentStatus === 'active' || agentStatus === 'paused')) {
-        setAgentMessage('Агент уже підключений.');
+        setAgentMessage('Помічник уже підключений.');
         return;
       }
       if (!effectiveAgentToken && !isConfiguredRoom) {
-        setAgentMessage('Щоб запросити агента, додайте LLM токен.');
+        setAgentMessage('Щоб запросити помічника, додайте LLM токен.');
         return;
       }
 
       try {
         pauseRequestedRef.current = false;
         setAgentStatus('requesting');
-        setAgentMessage(mode === 'resume' ? 'Активую агента…' : 'Запрошую агента…');
+        setAgentMessage(mode === 'resume' ? 'Активую помічника…' : 'Запрошую помічника…');
 
         const metadata: AgentMetadata = {
           roomName: trimmedRoom,
@@ -484,7 +491,7 @@ export default function App() {
         const dispatchResult = await ensureAgentDispatch(trimmedRoom, metadata);
         if (dispatchResult.agentPresent && dispatchResult.active) {
           setAgentStatus('active');
-          setAgentMessage('Агент уже в кімнаті.');
+          setAgentMessage('Помічник уже в кімнаті.');
           if (!dispatchResult.dispatch?.agentName && configuredAgentIdentity) {
             setAgentIdentity((prev: string) => prev || configuredAgentIdentity);
           }
@@ -494,12 +501,12 @@ export default function App() {
 
         const status = await fetchAgentStatus();
         if (status === 'idle') {
-          //setAgentMessage('Очікую на підключення агента…');
+          //setAgentMessage('Очікую на підключення помічника…');
         }
       } catch (error) {
         console.error('ensureAgentActive failed', error);
         setAgentStatus('error');
-        setAgentMessage(mode === 'resume' ? 'Не вдалося активувати агента.' : 'Не вдалося запросити агента.');
+        setAgentMessage(mode === 'resume' ? 'Не вдалося активувати помічника.' : 'Не вдалося запросити помічника.');
       }
     },
     [
@@ -540,7 +547,7 @@ export default function App() {
     try {
       pauseRequestedRef.current = true;
       setAgentStatus('requesting');
-      setAgentMessage('Призупиняю агента…');
+      setAgentMessage('Призупиняю помічника…');
 
       const response = await fetch(`/api/dispatch?room=${encodeURIComponent(trimmedRoom)}`, {
         method: 'DELETE',
@@ -549,13 +556,12 @@ export default function App() {
         const message = await response.text();
         throw new Error(message || 'Failed to pause agent');
       }
-      setAgentStatus('paused');
-      setAgentMessage('Агент на паузі.');
+      void fetchAgentStatus();
     } catch (error) {
       console.error('handleToggleAgentListening failed', error);
       pauseRequestedRef.current = false;
       setAgentStatus('error');
-      setAgentMessage('Не вдалося призупинити агента.');
+      setAgentMessage('Не вдалося призупинити помічника.');
     }
   }, [agentStatus, credentials, ensureAgentActive, trimmedRoom]);
 
@@ -563,20 +569,20 @@ export default function App() {
     switch (agentStatus) {
       case 'active':
         return {
-          label: 'Пауза агента',
-          ariaLabel: 'Поставити агента на паузу, щоб він не чув користувачів',
+          label: 'Пауза помічника',
+          ariaLabel: 'Поставити помічника на паузу, щоб він не чув користувачів',
           disabled: pauseDisabled,
           onClick: handleToggleAgentListening,
-          hint: 'Пауза агента: тимчасово вимикає звук для нього, щоб він не чув учасників.',
+          hint: 'Пауза помічника: тимчасово вимикає звук для нього, щоб він не чув учасників.',
           state: 'pause',
         };
       case 'paused':
         return {
-          label: 'Активувати агента',
-          ariaLabel: 'Активувати агента, щоб він знову чув користувачів',
+          label: 'Активувати помічника',
+          ariaLabel: 'Активувати помічника, щоб він знову чув користувачів',
           disabled: pauseDisabled,
           onClick: handleToggleAgentListening,
-          hint: 'Активувати агента: знову вмикає звук для агента.',
+          hint: 'Активувати помічника: знову вмикає звук для помічника.',
           state: 'resume',
         };
       case 'requesting': {
@@ -587,8 +593,8 @@ export default function App() {
           disabled: true,
           onClick: isPausingRequest ? handleToggleAgentListening : handleRequestAgent,
           hint: isPausingRequest
-            ? 'Призупиняю агента: вимикаю для нього звук.'
-            : 'Запрошую агента до кімнати, зачекайте кілька секунд.',
+            ? 'Призупиняю помічника: вимикаю для нього звук.'
+            : 'Запрошую помічника до кімнати, зачекайте кілька секунд.',
           state: 'requesting',
         };
       }
@@ -597,11 +603,11 @@ export default function App() {
           return null;
         }
         return {
-          label: 'Запросити агента',
-          ariaLabel: 'Спробувати ще раз запросити агента',
+          label: 'Запросити помічника',
+          ariaLabel: 'Спробувати ще раз запросити помічника',
           disabled: inviteDisabled,
           onClick: handleRequestAgent,
-          hint: 'Повторно запросити агента до кімнати.',
+          hint: 'Повторно запросити помічника до кімнати.',
           state: 'error',
         };
       case 'idle':
@@ -609,11 +615,11 @@ export default function App() {
           return null;
         }
         return {
-          label: 'Запросити агента',
-          ariaLabel: 'Запросити агента до кімнати',
+          label: 'Запросити помічника',
+          ariaLabel: 'Запросити помічника до кімнати',
           disabled: inviteDisabled,
           onClick: handleRequestAgent,
-          hint: 'Запросити агента: додає асистента, який допомагатиме користувачеві.',
+          hint: 'Запросити помічника: додає асистента, який допомагатиме користувачеві.',
           state: 'invite',
         };
       default:
@@ -667,16 +673,17 @@ export default function App() {
               )}
 
               <form className="inputs" onSubmit={handleSubmit}>
-                <label>
-                  Ваше імʼя
-                  <input
-                    type="text"
-                    required
-                    value={participantName}
-                    placeholder="Наприклад, Олексій"
-                    onChange={(event) => setParticipantName(event.target.value)}
-                  />
-                </label>
+                {!initialParticipantNameFromStorage && (
+                  <label>
+                    Ваше імʼя
+                    <input
+                      type="text"
+                      required
+                      value={participantName}
+                      onChange={(event) => setParticipantName(event.target.value)}
+                    />
+                  </label>
+                )}
 
                 {showLlmTokenField && (
                   <>

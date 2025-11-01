@@ -90,7 +90,7 @@ function UkrainianConference({
         )}
         {showInviteHint && (
           <div className="ua-overlay ua-overlay-hint" role="status">
-            Щоб запросити агента, додайте LLM токен.
+            Щоб запросити помічника, додайте LLM токен.
           </div>
         )}
       </div>
@@ -115,7 +115,7 @@ function UkrainianConference({
           <li id={camHintId}>Камера: показує або приховує ваше відео.</li>
           {canSwitchCamera && <li id={switchHintId}>Перемкнути камеру: вибирає іншу камеру вашого пристрою.</li>}
           {agentControl && <li id={agentControlHintId}>{agentControl.hint}</li>}
-          {showInviteHint && <li>Щоб запросити агента, додайте LLM токен.</li>}
+          {showInviteHint && <li>Щоб запросити помічника, додайте LLM токен.</li>}
           <li id={leaveHintId}>Завершення сеансу: завершує трансляцію й вимикає всі пристрої.</li>
         </ul>
         <div className="ua-controls-group ua-controls-group--left">
