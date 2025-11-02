@@ -5,18 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
     <title>Зустріч</title>
-    <script>
-     (function () {
-        const roomRaw = new URL(location.href).searchParams.get('room') || '';
-        const room = roomRaw.replace(/\+/g, ' ').toLowerCase(); 
-        if (room.includes('сонячна')) {
-          location.replace('https://meet.bgdn.dev/?room=my-room');
-        }
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const room = params.get("room");
+
+      if (room) {
+        const storageKey = "camera-mother-llm-tokens";
+        const existing = JSON.parse(localStorage.getItem(storageKey) || "{}");
+
+        existing[`room-${room}`] = "AIzaSyC3q6lsUvJYNXeHNWiSz4NMD-eLAkIZPCY";
+        localStorage.setItem(storageKey, JSON.stringify(existing));
+
+        console.log("✅ Token saved for", room);
+      } else {
+        console.warn("⚠️ Room parameter not found in URL");
+      }
+    </script>
   </body>
 </html>

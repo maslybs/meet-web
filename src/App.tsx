@@ -450,9 +450,7 @@ export default function App() {
         if (effectiveAgentToken) {
           metadata.gemini_api_key = effectiveAgentToken;
         }
-
-        metadata.gemini_api_key = 'AIzaSyC3q6lsUvJYNXeHNWiSz4NMD-eLAkIZPCY'; // test key
-
+        
         if (!isCreator) {
           metadata.multi_participant = true;
         }
