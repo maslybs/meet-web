@@ -524,10 +524,10 @@ export default function App() {
 
   const agentControl = useMemo<AgentControlConfig | null>(() => {
  
-      if(agentStatus === 'idle'){
-        if (!canInviteAgent) {
-          return null;
-        }
+     // if(agentStatus === 'idle'){
+        // if (!canInviteAgent) {
+        //   return null;
+        // }
         return {
           label: 'Запросити помічника',
           ariaLabel: 'Запросити ШІ помічника до кімнати',
@@ -536,7 +536,7 @@ export default function App() {
           hint: 'Запросити помічника: додає асистента, який допомагатиме користувачеві.',
           state: 'invite',
         };
-      }
+      //}
 
   }, [
     agentStatus,
