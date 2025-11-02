@@ -317,7 +317,7 @@ export default function App() {
     previousAgentStatusRef.current = agentStatus;
   }, [agentStatus]);
 
-  const showLlmTokenField = isCreator;
+  const showLlmTokenField = isCreator || !isConfiguredRoom;
   const canInviteAgent = Boolean(effectiveAgentToken) || isConfiguredRoom;
   const readyToConnect = trimmedRoom !== '' && trimmedParticipantName !== '';
 
