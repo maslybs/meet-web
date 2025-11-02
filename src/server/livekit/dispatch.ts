@@ -23,6 +23,10 @@ export interface RoomParticipant {
   state?: Record<string, unknown> | null;
 }
 
+function normalizeAgentName(name?: string | null): string {
+  return (name ?? '').trim().toLowerCase();
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   const text = await res.text();
   if (!text.trim()) {
@@ -67,7 +71,8 @@ export async function listDispatches(context: DispatchContext, room: string): Pr
 
 export async function listAgentDispatches(context: DispatchContext, room: string, agentName: string) {
   const all = await listDispatches(context, room);
-  return all.filter((dispatch) => dispatch.agentName === agentName);
+  const normalized = normalizeAgentName(agentName);
+  return all.filter((dispatch) => normalizeAgentName(dispatch.agentName) === normalized);
 }
 
 export async function createAgentDispatch(
@@ -111,7 +116,10 @@ export async function deleteAgentDispatch(context: DispatchContext, room: string
 export async function removeAgentDispatch(env: LiveKitEnv, room: string, agentName: string) {
   const context = await buildDispatchContext(env, room);
   const all = await listDispatches(context, room);
-  const matches = all.filter((dispatch) => dispatch.agentName === agentName && dispatch.id);
+  const normalized = normalizeAgentName(agentName);
+  const matches = all.filter(
+    (dispatch) => normalizeAgentName(dispatch.agentName) === normalized && dispatch.id,
+  );
 
   await Promise.all(
     matches.map((dispatch) => deleteAgentDispatch(context, room, dispatch.id as string)),

@@ -48,9 +48,12 @@ async function readPayload(request: Request): Promise<RequestPayload> {
 }
 
 function isActiveDispatch(dispatch: AgentDispatch): boolean {
-  const jobCount = dispatch.state?.jobs?.length ?? 0;
   const deleted = Boolean(dispatch.state?.deletedAt);
-  return jobCount > 0 && !deleted;
+  return Boolean(dispatch.id && !deleted);
+}
+
+function normalizeAgentName(name?: string | null): string {
+  return (name ?? '').trim().toLowerCase();
 }
 
 function getConfiguredAgentName(env: LiveKitAgentEnv): string | undefined {
@@ -89,17 +92,21 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
     if (method === 'GET') {
       const context = await buildDispatchContext(env, room);
       const allDispatches = await listDispatches(context, room);
-      const ours = allDispatches.filter((dispatch) => dispatch.agentName === agentName);
+      const normalizedAgentName = normalizeAgentName(agentName);
+      const ours = allDispatches.filter(
+        (dispatch) => normalizeAgentName(dispatch.agentName) === normalizedAgentName,
+      );
       const active = ours.find(isActiveDispatch) ?? null;
       const participants = await listParticipants(context, room);
       const agentPresent = participants.some((participant) => {
         const identity = (participant.identity ?? '').trim();
-        return identity === agentName || identity.startsWith('agent-');
+        const normalizedIdentity = normalizeAgentName(identity);
+        return normalizedIdentity === normalizedAgentName || identity.startsWith('agent-');
       });
 
       return Response.json({
         status: 'ok',
-        active: Boolean(active),
+        active: Boolean(active ?? ours.find((dispatch) => dispatch.id && !dispatch.state?.deletedAt)),
         agentPresent,
         dispatch: active,
         total: ours.length,
@@ -109,17 +116,24 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
     if (method === 'POST') {
       const context = await buildDispatchContext(env, room);
       const allDispatches = await listDispatches(context, room);
+      const normalizedAgentName = normalizeAgentName(agentName);
 
       const participants = await listParticipants(context, room);
       const agentPresent = participants.some((participant) => {
         const identity = (participant.identity ?? '').trim();
-        return identity === agentName || identity.startsWith('agent-');
+        const normalizedIdentity = normalizeAgentName(identity);
+        return normalizedIdentity === normalizedAgentName || identity.startsWith('agent-');
       });
 
       // Remove other agents' dispatches to avoid conflicts.
       await Promise.all(
         allDispatches
-          .filter((dispatch) => dispatch.agentName && dispatch.agentName !== agentName && dispatch.id)
+          .filter(
+            (dispatch) =>
+              dispatch.agentName &&
+              normalizeAgentName(dispatch.agentName) !== normalizedAgentName &&
+              dispatch.id,
+          )
           .map((dispatch) => deleteAgentDispatch(context, room, dispatch.id as string)),
       );
 
@@ -147,13 +161,19 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
 
       // Clean up any stale dispatches for this agent before creating a new one.
       await Promise.all(
-        existing
-          .filter((dispatch) => dispatch.id)
-          .map((dispatch) => deleteAgentDispatch(context, room, dispatch.id as string)),
+        existing.filter((dispatch) => dispatch.id).map((dispatch) => deleteAgentDispatch(context, room, dispatch.id as string)),
       );
 
-      const dispatch = await createAgentDispatch(context, room, agentName, metadata);
-      return Response.json({ status: 'ok', dispatch, active: true, agentPresent: false });
+      let dispatch = await createAgentDispatch(context, room, agentName, metadata);
+
+      if (!dispatch) {
+        const refreshed = await listAgentDispatches(context, room, agentName);
+        dispatch = refreshed.find((candidate) => candidate.id && !candidate.state?.deletedAt) ?? refreshed[0] ?? null;
+      }
+
+      const active = dispatch ? isActiveDispatch(dispatch) : false;
+
+      return Response.json({ status: 'ok', dispatch, active, agentPresent: false });
     }
 
     const result = await removeAgentDispatch(env, room, agentName);
