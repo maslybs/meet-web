@@ -149,7 +149,7 @@ export default function App() {
   const [tokenByRoom, setTokenByRoom] = useState<Record<string, string>>(() => loadStoredTokenMap());
   const [llmToken, setLlmToken] = useState(() => {
     if (!initialRoom) {
-      return 'AIzaSyC3q6lsUvJYNXeHNWiSz4NMD-eLAkIZPCY';
+      return '';
     }
     if (configuredRoomName && initialRoom === configuredRoomName && configuredAgentToken) {
       return configuredAgentToken;
@@ -350,7 +350,7 @@ export default function App() {
     const generated = generateRoomName();
     setRoomName(generated);
     setIsCreator(true);
-    setLlmToken('AIzaSyC3q6lsUvJYNXeHNWiSz4NMD-eLAkIZPCY');
+    setLlmToken('');
     setCredentials(null);
     setStatus(null);
     setError(null);
@@ -450,7 +450,6 @@ export default function App() {
         if (effectiveAgentToken) {
           metadata.gemini_api_key = effectiveAgentToken;
         }
-        
         if (!isCreator) {
           metadata.multi_participant = true;
         }
@@ -524,10 +523,10 @@ export default function App() {
 
   const agentControl = useMemo<AgentControlConfig | null>(() => {
  
-     // if(agentStatus === 'idle'){
-        // if (!canInviteAgent) {
-        //   return null;
-        // }
+      if(agentStatus === 'idle'){
+        if (!canInviteAgent) {
+          return null;
+        }
         return {
           label: 'Запросити помічника',
           ariaLabel: 'Запросити ШІ помічника до кімнати',
@@ -536,7 +535,7 @@ export default function App() {
           hint: 'Запросити помічника: додає асистента, який допомагатиме користувачеві.',
           state: 'invite',
         };
-      //}
+      }
 
   }, [
     agentStatus,
@@ -606,7 +605,7 @@ export default function App() {
                       LLM API токен для ШІ асистента (необов’язково)
                       <input
                         type="text"
-                        value={llmToken || 'AIzaSyC3q6lsUvJYNXeHNWiSz4NMD-eLAkIZPCY'}
+                        value={llmToken}
                         placeholder="Вставте токен вашого асистента"
                         onChange={(event) => setLlmToken(event.target.value)}
                         aria-describedby="llm-token-hint"
