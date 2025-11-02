@@ -11,6 +11,7 @@ if (typeof window !== 'undefined') {
     const sanitizedName = storedName?.trim();
     if (sanitizedName && !window.localStorage.getItem(targetKey)) {
       window.localStorage.setItem(targetKey, sanitizedName);
+      window.localStorage.removeItem(sourceKey);
     }
   } catch (error) {
     console.warn('Не вдалося синхронізувати імʼя користувача з localStorage.', error);

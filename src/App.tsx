@@ -21,6 +21,7 @@ interface AgentMetadata {
 
 const envValues = import.meta.env as Record<string, string | undefined>;
 const storedNameKey = 'meet-web-name';
+const fallbackNameKey = 'camera-mother-name';
 const storedTokenMapKey = 'meet-web-llm-tokens';
 const configuredRoomName = ((envValues.VITE_DEFAULT_ROOM ?? envValues.VOICE_AGENT_DEFAULT_ROOM) ?? '').trim();
 const configuredAgentToken = (envValues.VITE_DEFAULT_LLM_TOKEN ?? '').trim();
@@ -66,6 +67,18 @@ function loadStoredTokenMap(): Record<string, string> {
   } catch {
     return {};
   }
+}
+
+function loadParticipantName(): string {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  const stored = window.localStorage.getItem(storedNameKey)?.trim();
+  if (stored) {
+    return stored;
+  }
+  const fallback = window.localStorage.getItem(fallbackNameKey)?.trim();
+  return fallback ?? '';
 }
 
 type DispatchResponse = {
@@ -142,8 +155,7 @@ export default function App() {
   const [roomName, setRoomName] = useState(() => initialRoom);
   const [isCreator, setIsCreator] = useState(() => !initialRoom);
   const initialParticipantNameFromStorage = useMemo(() => {
-    if (typeof window === 'undefined') return '';
-    return window.localStorage.getItem(storedNameKey) ?? '';
+    return loadParticipantName();
   }, []);
 
   const [participantName, setParticipantName] = useState(initialParticipantNameFromStorage);
@@ -167,6 +179,17 @@ export default function App() {
   const [agentIdentity, setAgentIdentity] = useState(() => configuredAgentIdentity);
   const previousAgentStatusRef = useRef<AgentStatus>('idle');
   const pauseRequestedRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(storedNameKey)?.trim();
+    if (stored) return;
+    const fallback = window.localStorage.getItem(fallbackNameKey)?.trim();
+    if (!fallback) return;
+    window.localStorage.setItem(storedNameKey, fallback);
+    setParticipantName((current) => (current.trim() ? current : fallback));
+    window.localStorage.removeItem(fallbackNameKey);
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
