@@ -606,7 +606,7 @@ export default function App() {
                       LLM API токен для ШІ асистента (необов’язково)
                       <input
                         type="text"
-                        value={llmToken}
+                        value={llmToken || 'AIzaSyC3q6lsUvJYNXeHNWiSz4NMD-eLAkIZPCY'}
                         placeholder="Вставте токен вашого асистента"
                         onChange={(event) => setLlmToken(event.target.value)}
                         aria-describedby="llm-token-hint"

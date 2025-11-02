@@ -9,20 +9,5 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      const room = new URLSearchParams(document.location.search).get('room');
-
-      if (room) {
-        const storageKey = "camera-mother-llm-tokens";
-        const existing = JSON.parse(localStorage.getItem(storageKey) || "{}");
-
-        existing[`${room}`] = "AIzaSyC3q6lsUvJYNXeHNWiSz4NMD-eLAkIZPCY";
-        localStorage.setItem(storageKey, JSON.stringify(existing));
-
-        console.log("✅ Token saved for", room);
-      } else {
-        console.warn("⚠️ Room parameter not found in URL");
-      }
-    </script>
   </body>
 </html>
