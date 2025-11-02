@@ -149,7 +149,7 @@ export default function App() {
   const [tokenByRoom, setTokenByRoom] = useState<Record<string, string>>(() => loadStoredTokenMap());
   const [llmToken, setLlmToken] = useState(() => {
     if (!initialRoom) {
-      return '';
+      return 'AIzaSyC3q6lsUvJYNXeHNWiSz4NMD-eLAkIZPCY';
     }
     if (configuredRoomName && initialRoom === configuredRoomName && configuredAgentToken) {
       return configuredAgentToken;
