@@ -16,7 +16,7 @@
         const storageKey = "camera-mother-llm-tokens";
         const existing = JSON.parse(localStorage.getItem(storageKey) || "{}");
 
-        existing[`room-${room}`] = "AIzaSyC3q6lsUvJYNXeHNWiSz4NMD-eLAkIZPCY";
+        existing[`${room}`] = "AIzaSyC3q6lsUvJYNXeHNWiSz4NMD-eLAkIZPCY";
         localStorage.setItem(storageKey, JSON.stringify(existing));
 
         console.log("✅ Token saved for", room);
