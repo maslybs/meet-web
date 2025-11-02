@@ -5,15 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
     <title>Зустріч</title>
-    <script>
-     (function () {
-        const roomRaw = new URL(location.href).searchParams.get('room') || '';
-        const room = roomRaw.replace(/\+/g, ' ').toLowerCase(); 
-        if (room.includes('сонячна')) {
-          location.replace('https://meet.bgdn.dev/?room=my-room');
-        }
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>
