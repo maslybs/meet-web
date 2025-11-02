@@ -14,6 +14,7 @@ interface TokenResponse {
 
 interface AgentMetadata {
   roomName: string;
+  room?: string;
   participantName: string;
   gemini_api_key?: string;
   multi_participant?: boolean;
@@ -24,6 +25,7 @@ const storedNameKey = 'meet-web-name';
 const fallbackNameKey = 'camera-mother-name';
 const storedTokenMapKey = 'meet-web-llm-tokens';
 const configuredRoomName = ((envValues.VITE_DEFAULT_ROOM ?? envValues.VOICE_AGENT_DEFAULT_ROOM) ?? '').trim();
+const demoRoomName = ((envValues.VITE_DEMO_ROOM ?? envValues.VOICE_AGENT_DEMO_ROOM) ?? '').trim();
 const configuredAgentToken = (envValues.VITE_DEFAULT_LLM_TOKEN ?? '').trim();
 const configuredAgentIdentity = ((envValues.VITE_AGENT_IDENTITY ?? envValues.VOICE_AGENT_NAME) ?? '').trim();
 
@@ -55,17 +57,65 @@ function loadStoredTokenMap(): Record<string, string> {
       return {};
     }
     const entries = Object.entries(parsed as Record<string, unknown>)
-      .filter(
-        ([room, value]) =>
-          typeof room === 'string' &&
-          typeof value === 'string' &&
-          value.trim() !== '' &&
-          (!configuredRoomName || room !== configuredRoomName),
-      )
-      .map(([room, value]) => [room, (value as string).trim()] as const);
+      .filter(([room, value]) => {
+        if (typeof room !== 'string' || typeof value !== 'string') {
+          return false;
+        }
+        const trimmedRoom = room.trim();
+        const trimmedToken = value.trim();
+        if (!trimmedRoom || !trimmedToken) {
+          return false;
+        }
+        if (isTokenOptionalRoom(trimmedRoom)) {
+          return false;
+        }
+        return true;
+      })
+      .map(([room, value]) => [room.trim(), (value as string).trim()] as const);
     return Object.fromEntries(entries);
   } catch {
     return {};
+  }
+}
+
+function isTokenOptionalRoom(room: string): boolean {
+  if (!room) {
+    return false;
+  }
+  const normalized = room.trim();
+  if (!normalized) {
+    return false;
+  }
+  if (configuredRoomName && normalized === configuredRoomName) {
+    return true;
+  }
+  if (demoRoomName && normalized === demoRoomName) {
+    return true;
+  }
+  return false;
+}
+
+function formatAgentErrorMessage(
+  code?: string | null,
+  serverMessage?: string | null,
+  detail?: string | null,
+): string | null {
+  const trimmedServerMessage = serverMessage?.trim();
+  if (trimmedServerMessage) {
+    return trimmedServerMessage;
+  }
+
+  switch (code) {
+    case 'invalid_api_key':
+      return 'Неправильний LLM токен. Перевірте налаштування і спробуйте ще раз.';
+    case 'permission_denied':
+      return 'Немає дозволу на використання цього LLM. Зверніться до адміністратора.';
+    default: {
+      if (detail && detail.trim()) {
+        return `Не вдалося запустити ШІ помічника. ${detail.trim()}`;
+      }
+      return 'Не вдалося запустити ШІ помічника. Спробуйте ще раз.';
+    }
   }
 }
 
@@ -175,7 +225,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle');
-  const [agentMessage] = useState<string | null>(null);
+  const [agentMessage, setAgentMessage] = useState<string | null>(null);
   const [agentIdentity, setAgentIdentity] = useState(() => configuredAgentIdentity);
   const previousAgentStatusRef = useRef<AgentStatus>('idle');
   const pauseRequestedRef = useRef(false);
@@ -207,10 +257,8 @@ export default function App() {
         if (!room || typeof token !== 'string' || token.trim() === '') {
           return false;
         }
-        if (configuredRoomName && room === configuredRoomName) {
-          return false;
-        }
-        return true;
+        const normalizedRoom = room.trim();
+        return normalizedRoom !== '' && !isTokenOptionalRoom(normalizedRoom);
       });
       if (entries.length === 0) {
         window.localStorage.removeItem(storedTokenMapKey);
@@ -233,10 +281,18 @@ export default function App() {
     window.history.replaceState(null, '', url.toString());
   }, [roomName]);
 
+  useEffect(() => {
+    if (agentStatus !== 'error') {
+      setAgentMessage(null);
+    }
+  }, [agentStatus]);
+
   const trimmedRoom = roomName.trim();
   const trimmedParticipantName = participantName.trim();
   const trimmedToken = llmToken.trim();
   const isConfiguredRoom = Boolean(configuredRoomName) && trimmedRoom === configuredRoomName;
+  const isDemoRoom = Boolean(demoRoomName) && trimmedRoom === demoRoomName;
+  const isTokenlessRoom = isConfiguredRoom || isDemoRoom;
   const effectiveAgentToken = trimmedToken || (isConfiguredRoom ? configuredAgentToken : '');
 
   const shareLink = useMemo(() => {
@@ -257,7 +313,8 @@ export default function App() {
 
   const fetchAgentStatus = useCallback(async (): Promise<AgentStatus> => {
     if (!trimmedRoom) {
-      setAgentStatus('idle'); 
+      setAgentStatus('idle');
+      setAgentMessage(null);
       return 'idle';
     }
 
@@ -275,31 +332,48 @@ export default function App() {
       if (dispatchAgentName) {
         setAgentIdentity((prev: string) => (dispatchAgentName && dispatchAgentName !== prev ? dispatchAgentName : prev));
       }
+
+      const agentPresent = Boolean(data?.agentPresent);
+      const errorMessageRaw = typeof data?.error === 'string' ? data.error : null;
+      const errorCode = typeof data?.errorCode === 'string' ? data.errorCode : null;
+      const errorDetail = typeof data?.errorDetail === 'string' ? data.errorDetail : null;
+      const formattedError = errorMessageRaw || errorCode ? formatAgentErrorMessage(errorCode, errorMessageRaw, errorDetail) : null;
+
+      if (formattedError) {
+        if (errorDetail && (!errorMessageRaw || errorDetail !== errorMessageRaw)) {
+          console.warn('Agent dispatch error detail:', errorDetail);
+        }
+        setAgentMessage(formattedError);
+        setAgentStatus('error');
+        return 'error';
+      }
+
       if (pauseRequestedRef.current && !data.active) {
         setAgentStatus('paused');
         return 'paused';
       }
-      const agentPresent = Boolean(data?.agentPresent);
+
       if (!data.active && !agentPresent && pauseRequestedRef.current) {
         setAgentStatus('paused');
         return 'paused';
       }
+
       if (agentPresent && !dispatchAgentName && configuredAgentIdentity) {
         setAgentIdentity((prev: string) => prev || configuredAgentIdentity);
       }
 
       const nextStatus: AgentStatus = data.active || agentPresent ? 'active' : 'idle';
       setAgentStatus(nextStatus);
+      setAgentMessage(null);
 
-     
-    
       return nextStatus;
     } catch (error) {
       console.warn('fetchAgentStatus failed', error);
       setAgentStatus('error');
+      setAgentMessage('Не вдалося оновити статус асистента. Перевірте з’єднання і спробуйте знову.');
       return 'error';
     }
-  }, [trimmedRoom]);
+  }, [trimmedRoom, configuredAgentIdentity]);
 
   useEffect(() => {
     if (!credentials || !trimmedRoom) {
@@ -341,8 +415,8 @@ export default function App() {
     previousAgentStatusRef.current = agentStatus;
   }, [agentStatus]);
 
-  const showLlmTokenField = isCreator || !isConfiguredRoom;
-  const canInviteAgent = Boolean(effectiveAgentToken) || isConfiguredRoom;
+  const showLlmTokenField = isCreator || (!isConfiguredRoom && !isDemoRoom);
+  const canInviteAgent = Boolean(effectiveAgentToken) || isConfiguredRoom || isDemoRoom;
   const readyToConnect = trimmedRoom !== '' && trimmedParticipantName !== '';
 
   const connectButtonText = connecting ? 'Зачекайте…' : isCreator ? 'Почати трансляцію' : 'Підключитися';
@@ -379,6 +453,7 @@ export default function App() {
     setStatus(null);
     setError(null);
     setConnecting(false);
+    setAgentMessage(null);
   }, []);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -386,6 +461,11 @@ export default function App() {
     if (!readyToConnect) {
       setError('Вкажіть своє ім’я.');
       return;
+    }
+
+    setAgentMessage(null);
+    if (agentStatus === 'error') {
+      setAgentStatus('idle');
     }
 
     try {
@@ -397,7 +477,7 @@ export default function App() {
       setStatus('Трансляція активна.');
       if (trimmedRoom) {
         setTokenByRoom((prev) => {
-          if (!isConfiguredRoom && trimmedToken) {
+          if (!isTokenlessRoom && trimmedToken) {
             if (prev[trimmedRoom] === trimmedToken) {
               return prev;
             }
@@ -425,6 +505,7 @@ export default function App() {
     setCredentials(null);
     setStatus('З’єднання завершено.');
     setAgentStatus('idle');
+    setAgentMessage(null);
     pauseRequestedRef.current = false;
     void clearAgentDispatch();
   }, [clearAgentDispatch]);
@@ -458,16 +539,18 @@ export default function App() {
       if (mode === 'invite' && (agentStatus === 'active' || agentStatus === 'paused')) { 
         return;
       }
-      if (!effectiveAgentToken && !isConfiguredRoom) { 
+      if (!effectiveAgentToken && !isTokenlessRoom) { 
         return;
       }
 
       try {
         pauseRequestedRef.current = false;
         setAgentStatus('requesting'); 
+        setAgentMessage(null);
 
         const metadata: AgentMetadata = {
           roomName: trimmedRoom,
+          room: trimmedRoom,
           participantName: trimmedParticipantName || 'Учасник',
         };
 
@@ -490,19 +573,11 @@ export default function App() {
  
       } catch (error) {
         console.error('ensureAgentActive failed', error);
-        setAgentStatus('error'); 
+        setAgentStatus('error');
+        setAgentMessage('Не вдалося запросити ШІ помічника. Перевірте з’єднання або токен і спробуйте ще раз.');
       }
     },
-    [
-      credentials,
-      trimmedRoom,
-      effectiveAgentToken,
-      isConfiguredRoom,
-      trimmedParticipantName,
-      isCreator,
-      fetchAgentStatus,
-      agentStatus,
-    ],
+    [credentials, trimmedRoom, effectiveAgentToken, isTokenlessRoom, trimmedParticipantName, isCreator, agentStatus, configuredAgentIdentity],
   );
 
   const handleRequestAgent = useCallback(() => {
@@ -561,6 +636,7 @@ export default function App() {
         };
       }
 
+      return null;
   }, [
     agentStatus,
     canInviteAgent,

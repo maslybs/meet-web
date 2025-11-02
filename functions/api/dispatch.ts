@@ -47,10 +47,166 @@ async function readPayload(request: Request): Promise<RequestPayload> {
   }
 }
 
+type UnknownRecord = Record<string, unknown>;
+
+const JOB_STATUS_BY_NUMBER: Record<number, string> = {
+  0: 'JS_PENDING',
+  1: 'JS_RUNNING',
+  2: 'JS_SUCCESS',
+  3: 'JS_FAILED',
+};
+
+function normalizeStatus(value: unknown): string | null {
+  if (typeof value === 'string') {
+    return value.trim().toUpperCase() || null;
+  }
+  if (typeof value === 'number') {
+    return JOB_STATUS_BY_NUMBER[value] ?? null;
+  }
+  return null;
+}
+
+function pickTimestamp(state: UnknownRecord | null | undefined): number {
+  if (!state) {
+    return 0;
+  }
+  const candidates = [
+    state.updatedAt,
+    state.updated_at,
+    state.endedAt,
+    state.ended_at,
+    state.startedAt,
+    state.started_at,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number') {
+      return candidate;
+    }
+    if (typeof candidate === 'string') {
+      const numeric = Number(candidate);
+      if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
+        return numeric;
+      }
+      const iso = Date.parse(candidate);
+      if (!Number.isNaN(iso)) {
+        return iso;
+      }
+    }
+  }
+
+  return 0;
+}
+
+function getJobState(job: unknown): UnknownRecord | null {
+  if (!job || typeof job !== 'object') {
+    return null;
+  }
+  const state = (job as UnknownRecord).state;
+  if (!state || typeof state !== 'object') {
+    return null;
+  }
+  return state as UnknownRecord;
+}
+
+function getJobs(dispatch: AgentDispatch): UnknownRecord[] {
+  const jobs = dispatch.state?.jobs;
+  if (!Array.isArray(jobs)) {
+    return [];
+  }
+  return jobs.filter((job): job is UnknownRecord => Boolean(job) && typeof job === 'object');
+}
+
 function isActiveDispatch(dispatch: AgentDispatch): boolean {
-  const jobCount = dispatch.state?.jobs?.length ?? 0;
   const deleted = Boolean(dispatch.state?.deletedAt);
-  return jobCount > 0 && !deleted;
+  if (deleted) {
+    return false;
+  }
+  const jobs = getJobs(dispatch);
+  if (jobs.length === 0) {
+    return false;
+  }
+  return jobs.some((job) => {
+    const status = normalizeStatus(getJobState(job)?.status);
+    return status === 'JS_RUNNING' || status === 'JS_PENDING';
+  });
+}
+
+interface DispatchErrorInfo {
+  code: string;
+  message: string;
+  detail?: string | null;
+}
+
+const DEFAULT_ERROR_CODE = 'dispatch_failed';
+
+function deriveErrorCode(detail?: string | null): string {
+  if (!detail) {
+    return DEFAULT_ERROR_CODE;
+  }
+  const normalized = detail.toLowerCase();
+  if (normalized.includes('api key not valid')) {
+    return 'invalid_api_key';
+  }
+  if (normalized.includes('not entitled') || normalized.includes('permission')) {
+    return 'permission_denied';
+  }
+  return DEFAULT_ERROR_CODE;
+}
+
+function buildUserMessage(code: string, detail?: string | null): string {
+  switch (code) {
+    case 'invalid_api_key':
+      return 'Неправильний LLM токен. Перевірте налаштування і спробуйте ще раз.';
+    case 'permission_denied':
+      return 'Немає дозволу на використання цього LLM. Зверніться до адміністратора.';
+    default: {
+      const fallback = 'Не вдалося запустити ШІ помічника. Спробуйте ще раз пізніше.';
+      if (detail) {
+        return `${fallback} (${detail})`;
+      }
+      return fallback;
+    }
+  }
+}
+
+function extractDispatchError(dispatches: AgentDispatch[]): DispatchErrorInfo | null {
+  const jobs = dispatches.flatMap((dispatch) => getJobs(dispatch));
+  if (jobs.length === 0) {
+    return null;
+  }
+
+  const sorted = [...jobs].sort((a, b) => pickTimestamp(getJobState(b)) - pickTimestamp(getJobState(a)));
+  const failed = sorted.find((job) => normalizeStatus(getJobState(job)?.status) === 'JS_FAILED');
+  if (!failed) {
+    return null;
+  }
+
+  const failedTimestamp = pickTimestamp(getJobState(failed));
+  const newerActiveJobExists = sorted.some((job) => {
+    if (job === failed) {
+      return false;
+    }
+    const state = getJobState(job);
+    const status = normalizeStatus(state?.status);
+    if (status !== 'JS_RUNNING' && status !== 'JS_PENDING') {
+      return false;
+    }
+    return pickTimestamp(state) >= failedTimestamp;
+  });
+  if (newerActiveJobExists) {
+    return null;
+  }
+
+  const state = getJobState(failed);
+  const detailRaw = state?.error;
+  const detail = typeof detailRaw === 'string' && detailRaw.trim() ? detailRaw.trim() : null;
+  const code = deriveErrorCode(detail);
+  return {
+    code,
+    message: buildUserMessage(code, detail),
+    detail,
+  };
 }
 
 function getConfiguredAgentName(env: LiveKitAgentEnv): string | undefined {
@@ -91,6 +247,7 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
       const allDispatches = await listDispatches(context, room);
       const ours = allDispatches.filter((dispatch) => dispatch.agentName === agentName);
       const active = ours.find(isActiveDispatch) ?? null;
+      const dispatchError = extractDispatchError(ours);
       const participants = await listParticipants(context, room);
       const agentPresent = participants.some((participant) => {
         const identity = (participant.identity ?? '').trim();
@@ -103,6 +260,9 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
         agentPresent,
         dispatch: active,
         total: ours.length,
+        error: dispatchError?.message ?? null,
+        errorCode: dispatchError?.code ?? null,
+        errorDetail: dispatchError?.detail ?? null,
       });
     }
 
