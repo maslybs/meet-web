@@ -19,11 +19,12 @@ interface AgentMetadata {
   multi_participant?: boolean;
 }
 
+const envValues = import.meta.env as Record<string, string | undefined>;
 const storedNameKey = 'meet-web-name';
 const storedTokenMapKey = 'meet-web-llm-tokens';
-const configuredRoomName = (import.meta.env.VITE_DEFAULT_ROOM ?? '').trim();
-const configuredAgentToken = (import.meta.env.VITE_DEFAULT_LLM_TOKEN ?? '').trim();
-const configuredAgentIdentity = (import.meta.env.VITE_AGENT_IDENTITY ?? '').trim();
+const configuredRoomName = ((envValues.VITE_DEFAULT_ROOM ?? envValues.VOICE_AGENT_DEFAULT_ROOM) ?? '').trim();
+const configuredAgentToken = (envValues.VITE_DEFAULT_LLM_TOKEN ?? '').trim();
+const configuredAgentIdentity = ((envValues.VITE_AGENT_IDENTITY ?? envValues.VOICE_AGENT_NAME) ?? '').trim();
 
 function randomSuffix(length = 6) {
   const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
