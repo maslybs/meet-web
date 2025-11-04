@@ -557,10 +557,6 @@ export default function App() {
         if (effectiveAgentToken) {
           metadata.gemini_api_key = effectiveAgentToken;
         }
-        if (!isCreator) {
-          metadata.multi_participant = true;
-        }
-
         const dispatchResult = await ensureAgentDispatch(trimmedRoom, metadata);
         if (dispatchResult.agentPresent && dispatchResult.active) {
           setAgentStatus('active'); 
