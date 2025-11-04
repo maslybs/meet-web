@@ -6,6 +6,7 @@ import {
   RoomAudioRenderer,
   StartMediaButton,
   useParticipants,
+  useRoomContext,
   useTracks,
 } from '@livekit/components-react';
 import { RoomEvent, Track } from 'livekit-client';
@@ -49,6 +50,7 @@ function UkrainianConference({
   const agentControlHintId = useId();
   const leaveHintId = useId();
   const participants = useParticipants();
+  const room = useRoomContext();
   const remoteTracks = useMemo(
     () => tracks.filter((track) => !track.participant.isLocal),
     [tracks],
@@ -154,7 +156,14 @@ function UkrainianConference({
             <button
               type="button"
               className="ua-button secondary agent-control"
-              onClick={agentControl.onClick}
+              onClick={async () => {
+                try {
+                  await room.startAudio();
+                } catch (err) {
+                  console.warn('Audio unlock failed:', err);
+                }
+                agentControl.onClick();
+              }}
               disabled={agentControl.disabled}
               aria-describedby={agentControlHintId}
               aria-label={agentControl.ariaLabel}
