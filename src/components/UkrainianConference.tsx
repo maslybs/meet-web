@@ -353,13 +353,13 @@ function UkrainianConference({
 
   return (
     <div className="conference-layout">
-      <div className="ua-header">
-        <div className="ua-room-info" role="status">
+      <div className="ua-header" aria-hidden="true">
+        <div className="ua-room-info">
           {isDemoRoom ? (
             <h2>Демо кімната</h2>
           ) : null}
           {agentMessage && (
-            <div className="agent-status-message" role="alert">
+            <div className="agent-status-message">
               {agentMessage}
             </div>
           )}
@@ -370,6 +370,7 @@ function UkrainianConference({
         className={`ua-grid ${isSoloMode ? 'ua-grid--solo-agent' : ''}`}
         data-participant-count={tileCount}
         data-has-screenshare={hasScreenShare}
+        aria-hidden="true"
       >
         {/* Standard Grid Mode (Multiple Humans) - Everyone in grid including local user */}
         {!isSoloMode ? (
