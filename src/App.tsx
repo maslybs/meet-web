@@ -18,6 +18,7 @@ interface AgentMetadata {
   participantName: string;
   gemini_api_key?: string;
   multi_participant?: boolean;
+  greetingMode?: 'invite' | 'resume';
 }
 
 const envValues = import.meta.env as Record<string, string | undefined>;
@@ -112,9 +113,9 @@ function formatAgentErrorMessage(
       return 'Немає дозволу на використання цього LLM. Зверніться до адміністратора.';
     default: {
       if (detail && detail.trim()) {
-        return `Не вдалося запустити ШІ помічника. ${detail.trim()}`;
+        return `Не вдалося запустити ШІ асистента. ${detail.trim()}`;
       }
-      return 'Не вдалося запустити ШІ помічника. Спробуйте ще раз.';
+      return 'Не вдалося запустити ШІ асистента. Спробуйте ще раз.';
     }
   }
 }
@@ -291,7 +292,8 @@ export default function App() {
   const trimmedParticipantName = participantName.trim();
   const trimmedToken = llmToken.trim();
   const isConfiguredRoom = Boolean(configuredRoomName) && trimmedRoom === configuredRoomName;
-  const isDemoRoom = Boolean(demoRoomName) && trimmedRoom === demoRoomName;
+  // Allow "demo-room" explicitly for easier local testing if env var is missing
+  const isDemoRoom = (Boolean(demoRoomName) && trimmedRoom === demoRoomName) || trimmedRoom === 'demo-room';
   const isTokenlessRoom = isConfiguredRoom || isDemoRoom;
   const effectiveAgentToken = trimmedToken || (isConfiguredRoom ? configuredAgentToken : '');
 
@@ -408,8 +410,8 @@ export default function App() {
 
   useEffect(() => {
     const previous = previousAgentStatusRef.current;
-   
-    if (agentStatus !== 'paused' && pauseRequestedRef.current && agentStatus !== 'requesting') {
+
+    if (agentStatus !== 'paused' && pauseRequestedRef.current && agentStatus !== 'requesting' && agentStatus !== 'disconnecting') {
       pauseRequestedRef.current = false;
     }
     previousAgentStatusRef.current = agentStatus;
@@ -530,28 +532,29 @@ export default function App() {
 
   const ensureAgentActive = useCallback(
     async (mode: 'invite' | 'resume') => {
-      if (!credentials) { 
+      if (!credentials) {
         return;
       }
-      if (!trimmedRoom) { 
+      if (!trimmedRoom) {
         return;
       }
-      if (mode === 'invite' && (agentStatus === 'active' || agentStatus === 'paused')) { 
+      if (mode === 'invite' && (agentStatus === 'active' || agentStatus === 'paused')) {
         return;
       }
-      if (!effectiveAgentToken && !isTokenlessRoom) { 
+      if (!effectiveAgentToken && !isTokenlessRoom) {
         return;
       }
 
       try {
         pauseRequestedRef.current = false;
-        setAgentStatus('requesting'); 
+        setAgentStatus('requesting');
         setAgentMessage(null);
 
         const metadata: AgentMetadata = {
           roomName: trimmedRoom,
           room: trimmedRoom,
           participantName: trimmedParticipantName || 'Учасник',
+          greetingMode: mode,
         };
 
         if (effectiveAgentToken) {
@@ -559,32 +562,48 @@ export default function App() {
         }
         const dispatchResult = await ensureAgentDispatch(trimmedRoom, metadata);
         if (dispatchResult.agentPresent && dispatchResult.active) {
-          setAgentStatus('active'); 
+          setAgentStatus('active');
           if (!dispatchResult.dispatch?.agentName && configuredAgentIdentity) {
             setAgentIdentity((prev: string) => prev || configuredAgentIdentity);
           }
           pauseRequestedRef.current = false;
           return;
         }
- 
+
       } catch (error) {
         console.error('ensureAgentActive failed', error);
         setAgentStatus('error');
-        setAgentMessage('Не вдалося запросити ШІ помічника. Перевірте з’єднання або токен і спробуйте ще раз.');
+        setAgentMessage('Не вдалося запросити ШІ асистента. Перевірте з’єднання або токен і спробуйте ще раз.');
       }
     },
     [credentials, trimmedRoom, effectiveAgentToken, isTokenlessRoom, trimmedParticipantName, isCreator, agentStatus, configuredAgentIdentity],
   );
 
   const handleRequestAgent = useCallback(() => {
+    // Mobile Safari/Chrome Autoplay Fix:
+    // Explicitly resume AudioContext on user interaction to allow future agent audio.
+    const unlockAudio = () => {
+      try {
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContext) {
+          const ctx = new AudioContext();
+          // Just creating/resuming is often enough to flag the document as "user activated" for audio
+          ctx.resume().then(() => ctx.close()).catch(() => { });
+        }
+      } catch (e) {
+        // ignore errors
+      }
+    };
+    unlockAudio();
+
     void ensureAgentActive('invite');
   }, [ensureAgentActive]);
 
   const handleToggleAgentListening = useCallback(async () => {
-    if (!credentials) { 
+    if (!credentials) {
       return;
     }
-    if (!trimmedRoom) { 
+    if (!trimmedRoom) {
       return;
     }
 
@@ -599,7 +618,7 @@ export default function App() {
 
     try {
       pauseRequestedRef.current = true;
-      setAgentStatus('requesting'); 
+      setAgentStatus('disconnecting');
 
       const response = await fetch(`/api/dispatch?room=${encodeURIComponent(trimmedRoom)}`, {
         method: 'DELETE',
@@ -612,27 +631,56 @@ export default function App() {
     } catch (error) {
       console.error('handleToggleAgentListening failed', error);
       pauseRequestedRef.current = false;
-      setAgentStatus('error'); 
+      setAgentStatus('error');
     }
   }, [agentStatus, credentials, ensureAgentActive, trimmedRoom]);
 
   const agentControl = useMemo<AgentControlConfig | null>(() => {
- 
-      if(agentStatus === 'idle'){
-        if (!canInviteAgent) {
-          return null;
-        }
-        return {
-          label: 'Запросити помічника',
-          ariaLabel: 'Запросити ШІ помічника до кімнати',
-          disabled: inviteDisabled,
-          onClick: handleRequestAgent,
-          hint: 'Запросити помічника: додає асистента, який допомагатиме користувачеві.',
-          state: 'invite',
-        };
+    if (agentStatus === 'idle' || agentStatus === 'error') {
+      if (!canInviteAgent) {
+        return null;
       }
+      return {
+        label: 'Запросити асистента',
+        ariaLabel: 'Запросити ШІ асистента до кімнати',
+        disabled: inviteDisabled,
+        onClick: handleRequestAgent,
+        hint: 'Запросити асистента: додає асистента, який допомагатиме користувачеві.',
+        state: 'invite',
+      };
+    }
 
-      return null;
+    if (agentStatus === 'active') {
+      return {
+        label: 'Пауза асистента',
+        ariaLabel: 'Пауза асистента. Тимчасово вимкнути мікрофон асистента',
+        disabled: isPausingRequest,
+        onClick: handleToggleAgentListening,
+        hint: 'Асистент тимчасово відійде.',
+        state: 'pause',
+      };
+    }
+
+    if (agentStatus === 'paused') {
+      return {
+        label: 'Увімкнути асистента',
+        ariaLabel: 'Увімкнути асистента. Асистент знову буде вас чути',
+        disabled: false,
+        onClick: handleToggleAgentListening,
+        hint: 'Асистент повернеться до розмови.',
+        state: 'resume',
+      };
+    }
+
+    // Requesting state
+    return {
+      label: '...',
+      ariaLabel: 'Обробка запиту...',
+      disabled: true,
+      onClick: () => { },
+      hint: 'Зачекайте...',
+      state: 'requesting',
+    };
   }, [
     agentStatus,
     canInviteAgent,
@@ -649,13 +697,13 @@ export default function App() {
     <main className={`layout${credentials ? ' layout-room-active' : ''}`} data-lk-theme="default">
       {!credentials && (
         <section className="card" aria-live="polite">
-          <h1>{!roomName ? 'Створити трансляцію' : 'Вітаю' } {participantName}</h1>
+          <h1>{participantName ? 'Вітаю' : (!roomName ? 'Створити трансляцію' : 'Вітаю')} {participantName}</h1>
 
           {status && <p className="status-message">{status}</p>}
 
           {!roomName ? (
             <>
-              <p>Натисніть нижче, щоб створити нову трансляцію і запросити помічника.</p>
+              <p>Натисніть нижче, щоб створити нову трансляцію і запросити асистента і інших учасників.</p>
               <div className="actions">
                 <button type="button" onClick={handleCreateRoom} aria-label="Створити трансляцію">
                   Створити трансляцію
@@ -723,7 +771,7 @@ export default function App() {
             </>
           )}
 
-          
+
           {error && <p className="error">{error}</p>}
         </section>
       )}
@@ -735,20 +783,27 @@ export default function App() {
             token={credentials.token}
             connect
             audio
-            video
+            video={false}
             options={liveKitOptions}
             onDisconnected={handleDisconnect}
             style={{ height: '100%', width: '100%' }}
           >
             <UkrainianConference
-              onLeave={handleDisconnect}
+              onLeave={() => {
+                setCredentials(null);
+                setStatus(null);
+                setError(null);
+                setAgentStatus('idle');
+                setAgentMessage(null);
+              }}
               agentControl={agentControl}
-              showInviteHint={showInviteHint}
+              showInviteHint={!credentials && !connecting && !error && !status}
               roomName={roomName}
               agentMessage={agentMessage}
               agentIdentity={agentIdentity}
               onAgentPresenceChange={handleAgentPresenceChange}
               agentStatus={agentStatus}
+              isDemoRoom={Boolean(demoRoomName && roomName === demoRoomName)}
             />
           </LiveKitRoom>
         </section>

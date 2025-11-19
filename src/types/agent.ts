@@ -9,4 +9,4 @@ export interface AgentControlConfig {
   state: AgentControlState;
 }
 
-export type AgentStatus = 'idle' | 'requesting' | 'active' | 'paused' | 'error';
+export type AgentStatus = 'idle' | 'requesting' | 'active' | 'paused' | 'error' | 'disconnecting';

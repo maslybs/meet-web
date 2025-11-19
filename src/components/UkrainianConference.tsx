@@ -1,18 +1,114 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
-  DisconnectButton,
   GridLayout,
   ParticipantTile,
   RoomAudioRenderer,
-  StartMediaButton,
   useParticipants,
   useRoomContext,
   useTracks,
 } from '@livekit/components-react';
 import { RoomEvent, Track } from 'livekit-client';
+import type { Participant } from 'livekit-client';
 import { AccessibleTrackToggle } from './AccessibleTrackToggle';
 import { CameraSwitchButton } from './CameraSwitchButton';
 import type { AgentControlConfig, AgentStatus } from '../types/agent';
+import { useConnectionSounds } from '../hooks/useConnectionSounds';
+
+// Custom hook since it's not exported in this version of components-react
+function useAudioLevel(participant: Participant | null) {
+  const [level, setLevel] = useState(0);
+
+  useEffect(() => {
+    if (!participant) {
+      setLevel(0);
+      return;
+    }
+
+    const handleLevelChange = (lvl: number) => {
+      setLevel(lvl);
+    };
+
+    const handleSpeakingChange = () => {
+      // Force update level when speaking status changes, just in case
+      setLevel(participant.audioLevel);
+    };
+
+    participant.on('audioLevelChanged', handleLevelChange);
+    participant.on('isSpeakingChanged', handleSpeakingChange);
+
+    setLevel(participant.audioLevel || 0);
+
+    return () => {
+      participant.off('audioLevelChanged', handleLevelChange);
+      participant.off('isSpeakingChanged', handleSpeakingChange);
+    };
+  }, [participant]);
+
+  return level;
+}
+
+// --- Icons ---
+
+const MicOnIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+    <line x1="12" y1="19" x2="12" y2="23" />
+    <line x1="8" y1="23" x2="16" y2="23" />
+  </svg>
+);
+
+const MicOffIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="1" y1="1" x2="23" y2="23" />
+    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+    <line x1="12" y1="19" x2="12" y2="23" />
+    <line x1="8" y1="23" x2="16" y2="23" />
+  </svg>
+);
+
+const CamOnIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M23 7l-7 5 7 5V7z" />
+    <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+  </svg>
+);
+
+const CamOffIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M23 7l-7 5 7 5V7z" />
+    <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+    <line x1="2" y1="2" x2="22" y2="22" />
+  </svg>
+);
+
+// New Icons for Agent Control
+const InviteIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3V4M12 20V21M21 12H20M4 12H3M18.364 5.636L17.657 6.343M6.343 17.657L5.636 18.364M18.364 18.364L17.657 17.657M6.343 6.343L5.636 5.636" />
+    <path d="M12 12L12 12.01" strokeWidth="4" />
+  </svg>
+);
+
+const PauseIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="6" y="4" width="4" height="16" />
+    <rect x="14" y="4" width="4" height="16" />
+  </svg>
+);
+
+const ResumeIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="5 3 19 12 5 21 5 3" />
+  </svg>
+);
+
+const SpinnerIcon = () => (
+  <svg className="animate-spin" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+  </svg>
+);
 
 interface UkrainianConferenceProps {
   onLeave: () => void;
@@ -21,8 +117,9 @@ interface UkrainianConferenceProps {
   roomName: string;
   agentMessage: string | null;
   agentIdentity: string;
-  onAgentPresenceChange: (present: boolean) => void;
+  onAgentPresenceChange: (present: boolean, agentId?: string | null) => void;
   agentStatus: AgentStatus;
+  isDemoRoom: boolean;
 }
 
 function UkrainianConference({
@@ -34,6 +131,7 @@ function UkrainianConference({
   agentIdentity,
   onAgentPresenceChange,
   agentStatus,
+  isDemoRoom,
 }: UkrainianConferenceProps) {
   const tracks = useTracks(
     [
@@ -42,142 +140,396 @@ function UkrainianConference({
     ],
     { updateOnlyOn: [RoomEvent.ActiveSpeakersChanged], onlySubscribed: false },
   );
+  const participants = useParticipants();
   const [canSwitchCamera, setCanSwitchCamera] = useState(false);
-  const unmuteHintId = useId();
   const micHintId = useId();
-  const camHintId = useId();
+  const cameraHintId = useId();
   const switchHintId = useId();
   const agentControlHintId = useId();
   const leaveHintId = useId();
-  const participants = useParticipants();
   const room = useRoomContext();
+
+  const normalizeValue = useCallback((value?: string | null) => value?.trim().toLowerCase() ?? '', []);
+
+  const isAgentParticipant = useCallback(
+    (identity?: string | null, name?: string | null, metadata?: string | null) => {
+      const normalizedTarget = normalizeValue(agentIdentity);
+      const normalizedIdentity = normalizeValue(identity);
+      const normalizedName = normalizeValue(name);
+
+      if (normalizedTarget && (normalizedIdentity === normalizedTarget || normalizedName === normalizedTarget)) {
+        return true;
+      }
+
+      // Stronger check for identity starting with 'agent-'
+      if (normalizedIdentity.startsWith('agent-')) {
+        return true;
+      }
+
+      if (normalizedName.includes('agent')) {
+        return true;
+      }
+
+      const rawMetadata = typeof metadata === 'string' ? metadata.trim() : '';
+      if (!rawMetadata) {
+        return false;
+      }
+
+      const loweredMetadata = rawMetadata.toLowerCase();
+      if (loweredMetadata.includes('ai-agent') || loweredMetadata.includes('voice_agent')) {
+        return true;
+      }
+
+      try {
+        const parsed = JSON.parse(rawMetadata);
+        if (parsed && typeof parsed === 'object') {
+          const possibleFlags = [
+            parsed.agent,
+            parsed.isAgent,
+            parsed.aiAgent,
+            parsed.is_ai_agent,
+            parsed.voice_agent,
+          ];
+          if (possibleFlags.some((flag) => Boolean(flag))) {
+            return true;
+          }
+          const roleLike = parsed.role || parsed.type || parsed.participantType;
+          if (typeof roleLike === 'string' && roleLike.toLowerCase().includes('agent')) {
+            return true;
+          }
+          if (Array.isArray(parsed.roles)) {
+            const hasAgentRole = parsed.roles.some(
+              (role) => typeof role === 'string' && role.toLowerCase().includes('agent'),
+            );
+            if (hasAgentRole) {
+              return true;
+            }
+          }
+        }
+      } catch {
+        // metadata is not JSON; fall back to substring checks only
+      }
+
+      return loweredMetadata.includes('agent');
+    },
+    [agentIdentity, normalizeValue],
+  );
+
+  // Filter out agent tracks completely so they don't appear in the grid
+  const filteredTracks = useMemo(() => {
+    return tracks.filter(track => {
+      return !isAgentParticipant(track.participant.identity, track.participant.name, track.participant.metadata);
+    });
+  }, [tracks, isAgentParticipant]);
+
+  // Create manual placeholders for real users who have no camera track
+  const trackWithPlaceholders = useMemo(() => {
+    const cameraTracks = filteredTracks.filter(t => t.source === Track.Source.Camera);
+    const participantsWithCamera = new Set(cameraTracks.map(t => t.participant.identity));
+
+    const realParticipants = participants.filter(p =>
+      !p.isLocal && !isAgentParticipant(p.identity, p.name, p.metadata)
+    );
+
+    const additionalTracks: any[] = [];
+    realParticipants.forEach(participant => {
+      if (!participantsWithCamera.has(participant.identity)) {
+        additionalTracks.push({
+          participant,
+          source: Track.Source.Camera,
+          track: null,
+          isPlaceholder: true
+        });
+      }
+    });
+
+    return [...filteredTracks, ...additionalTracks];
+  }, [filteredTracks, participants, isAgentParticipant]);
+
   const remoteTracks = useMemo(
-    () => tracks.filter((track) => !track.participant.isLocal),
-    [tracks],
+    () => trackWithPlaceholders.filter((track) => !track.participant.isLocal),
+    [trackWithPlaceholders],
   );
-  const localTracks = useMemo(
-    () => tracks.filter((track) => track.participant.isLocal),
-    [tracks],
-  );
-  const tileCount = tracks.length;
-  const hasScreenShare = tracks.some((track) => track.source === Track.Source.ScreenShare);
-  const agentParticipant = useMemo(
+
+  // Explicitly use ONLY filtered tracks for the grid
+  const humanRemoteTracks = useMemo(
     () =>
-      agentIdentity
-        ? participants.find((participant) => participant.identity === agentIdentity) ?? null
-        : null,
-    [participants, agentIdentity],
+      remoteTracks.filter(
+        (track) => !isAgentParticipant(track.participant.identity, track.participant.name, track.participant.metadata),
+      ),
+    [remoteTracks, isAgentParticipant],
   );
+
+  const localTracks = useMemo(
+    () => trackWithPlaceholders.filter((track) => track.participant.isLocal),
+    [trackWithPlaceholders],
+  );
+
+  const tileCount = humanRemoteTracks.length + localTracks.length;
+  const hasScreenShare = trackWithPlaceholders.some((track) => track.source === Track.Source.ScreenShare);
+
+  const agentParticipant = useMemo(() => {
+    return (
+      participants.find((participant) =>
+        !participant.isLocal && isAgentParticipant(participant.identity, participant.name, participant.metadata),
+      ) ?? null
+    );
+  }, [participants, isAgentParticipant]);
+
+  const showAgentAnimation = agentStatus !== 'idle' && agentStatus !== 'error';
+
+  // SOLO MODE: Active whenever there are no other human participants to show.
+  // This ensures the local user is fullscreen when alone or only with the agent.
+  const isSoloMode = humanRemoteTracks.length === 0;
 
   useEffect(() => {
-    onAgentPresenceChange(Boolean(agentParticipant));
+    onAgentPresenceChange(Boolean(agentParticipant), agentParticipant?.identity ?? agentParticipant?.name ?? null);
   }, [agentParticipant, onAgentPresenceChange]);
 
+  // --- Waiting Sound Logic ---
+  // We want to play the sound if:
+  // 1. Agent is being requested (waiting for join)
+  // 2. Agent has joined (active) but hasn't spoken yet (waiting for greeting)
+
+  const [hasAgentSpoken, setHasAgentSpoken] = useState(false);
+  const agentAudioLevel = useAudioLevel(agentParticipant);
+
+  // Reset hasAgentSpoken when agent leaves or status changes to non-active
+  useEffect(() => {
+    if (agentStatus !== 'active' && agentStatus !== 'requesting') {
+      setHasAgentSpoken(false);
+    }
+  }, [agentStatus]);
+
+  // Detect speech
+  useEffect(() => {
+    if (agentStatus === 'active' && agentParticipant && agentAudioLevel > 0.01) {
+      setHasAgentSpoken(true);
+    }
+  }, [agentStatus, agentParticipant, agentAudioLevel]);
+
+  // Play sound if requesting OR (active AND not spoken yet)
+  // But add a safety timeout (e.g. 10s) after active to stop sound even if no speech detected, 
+  // to avoid eternal ringing if agent is silent.
+  const [activeTimeout, setActiveTimeout] = useState(false);
+
+  useEffect(() => {
+    if (agentStatus === 'active') {
+      const timer = setTimeout(() => setActiveTimeout(true), 10000);
+      return () => clearTimeout(timer);
+    } else {
+      setActiveTimeout(false);
+    }
+  }, [agentStatus]);
+
+  const shouldPlayWaitingSound =
+    agentStatus === 'requesting' ||
+    (agentStatus === 'active' && !hasAgentSpoken && !activeTimeout);
+
+  const { playAgentDisconnectSound, playUserDisconnectSound, initAudio } = useConnectionSounds(shouldPlayWaitingSound);
+
+  // Play disconnect sound when agent goes from active to idle/paused OR disconnecting
+  const prevAgentStatus = useRef(agentStatus);
+  useEffect(() => {
+    // If we are disconnecting, play sound immediately
+    if (agentStatus === 'disconnecting' && prevAgentStatus.current === 'active') {
+      playUserDisconnectSound();
+    }
+    // Fallback for other transitions if needed, but 'disconnecting' covers the pause click
+    else if (prevAgentStatus.current === 'active' && (agentStatus === 'idle' || agentStatus === 'paused')) {
+      playUserDisconnectSound();
+    }
+    prevAgentStatus.current = agentStatus;
+  }, [agentStatus, playUserDisconnectSound]);
+
+  const handleDisconnect = () => {
+    // User leaving - no sound requested
+
+    // Small delay to let the sound start before tearing down
+    setTimeout(() => {
+      room.disconnect();
+    }, 200);
+  };
+
   return (
-    <div className="ua-conference">
-      <RoomAudioRenderer />
-      <div className="ua-overlays">
-        {roomName && (
-          <div className="ua-overlay ua-overlay-room">
-            Кімната: <strong>{roomName}</strong>
-          </div>
-        )}
-        {agentMessage && (
-          <div
-            className={`ua-overlay ua-overlay-agent${agentStatus === 'error' ? ' ua-overlay-error' : ''}`}
-            role="status"
-          >
-            {agentMessage}
-          </div>
-        )}
-        {showInviteHint && (
-          <div className="ua-overlay ua-overlay-hint" role="status">
-            Щоб запросити помічника, додайте LLM токен.
-          </div>
-        )}
+    <div className="conference-layout">
+      <div className="ua-header">
+        <div className="ua-room-info" role="status">
+          {isDemoRoom ? (
+            <h2>Демо кімната</h2>
+          ) : null}
+          {agentMessage && (
+            <div className="agent-status-message" role="alert">
+              {agentMessage}
+            </div>
+          )}
+        </div>
       </div>
-      <div className="ua-grid" data-participant-count={tileCount} data-has-screenshare={hasScreenShare}>
-        <GridLayout tracks={remoteTracks}>
-          <ParticipantTile />
-        </GridLayout>
-        {localTracks.length > 0 && (
-          <div className="local-participant-container">
-            <GridLayout tracks={localTracks}>
+
+      <div
+        className={`ua-grid ${isSoloMode ? 'ua-grid--solo-agent' : ''}`}
+        data-participant-count={tileCount}
+        data-has-screenshare={hasScreenShare}
+      >
+        {/* Standard Grid Mode (Multiple Humans) - Everyone in grid including local user */}
+        {!isSoloMode ? (
+          <div className="ua-grid-remote">
+            <GridLayout tracks={[...humanRemoteTracks, ...localTracks]}>
               <ParticipantTile />
             </GridLayout>
           </div>
+        ) : (
+          /* Solo Mode - Local user is fullscreen background */
+          localTracks.length > 0 && (
+            <div className="local-participant-container local-participant-container--solo">
+              <GridLayout tracks={localTracks}>
+                <ParticipantTile />
+              </GridLayout>
+            </div>
+          )
         )}
       </div>
-      <div className="ua-controls">
-        <ul className="sr-only" aria-label="Опис кнопок керування конференцією">
-          <li id={unmuteHintId}>
-            Увімкнути звук: надає браузеру доступ до аудіо, щоб ви могли чути інших учасників.
-          </li>
-          <li id={micHintId}>Мікрофон: вмикає або вимикає ваш голос під час дзвінка.</li>
-          <li id={camHintId}>Камера: показує або приховує ваше відео.</li>
-          {canSwitchCamera && <li id={switchHintId}>Перемкнути камеру: вибирає іншу камеру вашого пристрою.</li>}
-          {agentControl && <li id={agentControlHintId}>{agentControl.hint}</li>}
-          {showInviteHint && <li>Щоб запросити помічника, додайте LLM токен.</li>}
-          <li id={leaveHintId}>Завершення сеансу: завершує трансляцію й вимикає всі пристрої.</li>
-        </ul>
-        <div className="ua-controls-group ua-controls-group--left">
-          <StartMediaButton
-            className="ua-button"
-            data-variant="primary"
-            aria-describedby={unmuteHintId}
-            aria-label="Увімкнути звук і дозволити відтворення аудіо"
-          >
-            Увімкнути звук
-          </StartMediaButton>
-          <AccessibleTrackToggle
-            source={Track.Source.Microphone}
-            baseLabel="Мікрофон"
-            labelOn="Мікрофон увімкнено. Натисніть, щоб вимкнути."
-            labelOff="Мікрофон вимкнено. Натисніть, щоб увімкнути."
-            className="ua-button"
-            aria-describedby={micHintId}
-          >
-            Мікрофон
-          </AccessibleTrackToggle>
-          <AccessibleTrackToggle
-            source={Track.Source.Camera}
-            baseLabel="Камера"
-            labelOn="Камера увімкнена. Натисніть, щоб вимкнути."
-            labelOff="Камера вимкнена. Натисніть, щоб увімкнути."
-            className="ua-button"
-            aria-describedby={camHintId}
-          >
-            Камера
-          </AccessibleTrackToggle>
-          <CameraSwitchButton descriptionId={switchHintId} onAvailabilityChange={setCanSwitchCamera} />
-        </div>
-        <div className="ua-controls-group ua-controls-group--center">
-          {agentControl && (
+
+      {/* Footer Area with Controls and Agent Visual */}
+      <div className="ua-footer">
+        <div className="ua-controls">
+          <ul className="sr-only" aria-label="Опис кнопок керування конференцією">
+            <li id={micHintId}>Вмикає або вимикає ваш мікрофон.</li>
+            <li id={cameraHintId}>Вмикає або вимикає вашу камеру.</li>
+            {canSwitchCamera && <li id={switchHintId}>Перемикає між передньою та задньою камерами.</li>}
+            <li id={leaveHintId}>Завершує зустріч і повертає на головну.</li>
+            {agentControl && <li id={agentControlHintId}>{agentControl.hint}</li>}
+          </ul>
+
+          <div className="control-group">
+            <AccessibleTrackToggle
+              source={Track.Source.Microphone}
+              baseLabel="Мікрофон"
+              aria-describedby={micHintId}
+            >
+              {(enabled) => enabled ? <MicOnIcon /> : <MicOffIcon />}
+            </AccessibleTrackToggle>
+
+            <AccessibleTrackToggle
+              source={Track.Source.Camera}
+              baseLabel="Камера"
+              aria-describedby={cameraHintId}
+              onChange={setCanSwitchCamera}
+            >
+              {(enabled) => enabled ? <CamOnIcon /> : <CamOffIcon />}
+            </AccessibleTrackToggle>
+
+            {canSwitchCamera && (
+              <CameraSwitchButton descriptionId={switchHintId} />
+            )}
+          </div>
+
+          <div className="control-group control-group--actions">
+            {agentControl && (
+              <button
+                type="button"
+                className={`ua-button agent-control ${agentControl.state === 'requesting' ? 'icon-button' : ''}`}
+                onClick={(e) => {
+                  initAudio();
+                  agentControl.onClick(e);
+                }}
+                disabled={agentControl.disabled}
+                aria-label={agentControl.ariaLabel}
+                title={agentControl.label}
+                data-agent-state={agentControl.state}
+                aria-describedby={agentControlHintId}
+              >
+                {agentControl.state === 'pause' ? (
+                  <PauseIcon />
+                ) : agentControl.state === 'resume' ? (
+                  <ResumeIcon />
+                ) : agentControl.state === 'invite' ? (
+                  <InviteIcon />
+                ) : (
+                  <SpinnerIcon />
+                )}
+                {/* Show label text for Invite/Pause/Resume states */}
+                {(agentControl.state === 'pause' || agentControl.state === 'resume' || agentControl.state === 'invite') && (
+                  <span className="ua-button-label">{agentControl.label}</span>
+                )}
+              </button>
+            )}
+
             <button
               type="button"
-              className="ua-button secondary agent-control"
-              onClick={async () => {
-                try {
-                  await room.startAudio();
-                } catch (err) {
-                  console.warn('Audio unlock failed:', err);
-                }
-                agentControl.onClick();
-              }}
-              disabled={agentControl.disabled}
-              aria-describedby={agentControlHintId}
-              aria-label={agentControl.ariaLabel}
-              data-agent-state={agentControl.state}
+              className="ua-button danger"
+              aria-label="Завершити"
+              aria-describedby={leaveHintId}
+              onClick={handleDisconnect}
             >
-              {agentControl.label}
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M16 12H22M22 12L19 9M22 12L19 15M12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </button>
+          </div>
+
+          <RoomAudioRenderer />
+
+          {showInviteHint && !agentControl && (
+            <div className="invite-hint" role="status">
+              Щоб запросити асистента, переконайтеся, що сервер налаштовано.
+            </div>
           )}
         </div>
-        <div className="ua-controls-group ua-controls-group--right">
-          <DisconnectButton className="ua-button danger" onClick={onLeave} aria-describedby={leaveHintId} aria-label="Завершити трансляцію">
-            Завершення сеансу
-          </DisconnectButton>
-        </div>
+
+        {/* Agent Visual (Orb) - Placed to the right of controls */}
+        {showAgentAnimation && (
+          <AgentPresenceVisual
+            state={agentStatus}
+            participant={agentParticipant}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface AgentPresenceVisualProps {
+  state: AgentStatus;
+  participant: Participant | null;
+}
+
+function AgentPresenceVisual({ state, participant }: AgentPresenceVisualProps) {
+  // Cast to any because standard types might expect TrackReference, but newer SDKs handle Participant or we handle nulls safely
+  const audioLevel = useAudioLevel(participant as any);
+
+  // Calculate reactive scale
+  // Natural feel: Subtle size change (x0.6), rely on internal animation speed/glow for intensity.
+  const scale = Math.min(1.15, 1 + (audioLevel || 0) * 0.6);
+
+  const isConnecting = state === 'requesting' || (state === 'active' && !participant);
+  // Only show speaking animation if active (not paused)
+  const isSpeaking = state === 'active' && (audioLevel || 0) > 0.01;
+
+  return (
+    <div
+      className="agent-visual-side"
+      aria-hidden="true"
+      data-agent-state={state}
+      data-agent-connecting={isConnecting}
+      data-is-speaking={isSpeaking}
+      title={isConnecting ? 'Асистент підключається...' : 'Асистент активний'}
+      style={{
+        '--agent-scale': scale,
+      } as React.CSSProperties}
+    >
+      <div className="agent-visual__halo agent-visual__halo--outer" />
+      <div className="agent-visual__halo agent-visual__halo--inner" />
+      <div className="agent-visual__core">
+        {isConnecting ? (
+          <div className="agent-loader" />
+        ) : (
+          <>
+            <div className="agent-visual__spark agent-visual__spark--one" />
+            <div className="agent-visual__spark agent-visual__spark--two" />
+            <span>AI</span>
+          </>
+        )}
       </div>
     </div>
   );
