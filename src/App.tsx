@@ -642,7 +642,7 @@ export default function App() {
       }
       return {
         label: 'Запросити асистента',
-        ariaLabel: 'Запросити ШІ асистента до кімнати',
+        ariaLabel: '',
         disabled: inviteDisabled,
         onClick: handleRequestAgent,
         hint: 'Запросити асистента: додає асистента, який допомагатиме користувачеві.',
@@ -653,7 +653,7 @@ export default function App() {
     if (agentStatus === 'active') {
       return {
         label: 'Пауза асистента',
-        ariaLabel: 'Пауза асистента. Тимчасово вимкнути мікрофон асистента',
+        ariaLabel: '',
         disabled: isPausingRequest,
         onClick: handleToggleAgentListening,
         hint: 'Асистент тимчасово відійде.',
@@ -664,7 +664,7 @@ export default function App() {
     if (agentStatus === 'paused') {
       return {
         label: 'Увімкнути асистента',
-        ariaLabel: 'Увімкнути асистента. Асистент знову буде вас чути',
+        ariaLabel: '',
         disabled: false,
         onClick: handleToggleAgentListening,
         hint: 'Асистент повернеться до розмови.',
