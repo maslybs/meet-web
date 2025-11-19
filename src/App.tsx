@@ -291,7 +291,8 @@ export default function App() {
   const trimmedParticipantName = participantName.trim();
   const trimmedToken = llmToken.trim();
   const isConfiguredRoom = Boolean(configuredRoomName) && trimmedRoom === configuredRoomName;
-  const isDemoRoom = Boolean(demoRoomName) && trimmedRoom === demoRoomName;
+  // Allow "demo-room" explicitly for easier local testing if env var is missing
+  const isDemoRoom = (Boolean(demoRoomName) && trimmedRoom === demoRoomName) || trimmedRoom === 'demo-room';
   const isTokenlessRoom = isConfiguredRoom || isDemoRoom;
   const effectiveAgentToken = trimmedToken || (isConfiguredRoom ? configuredAgentToken : '');
 

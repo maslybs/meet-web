@@ -304,7 +304,27 @@ textarea {
   pointer-events: auto;
   /* Keep the visual interesting but contained */
   transform: scale(var(--agent-scale, 1));
-  transition: transform 0.1s ease-out;
+  /* Instant reaction (0.05s) to match voice perfectly without lag */
+  transition: transform 0.05s ease-out;
+}
+
+/* ... (existing halo styles) ... */
+
+/* Speaking State - Make it alive, not just big */
+.agent-visual-side[data-is-speaking="true"] .agent-visual__halo {
+  animation-duration: 2s; /* Pulse faster */
+  border-color: rgba(147, 197, 253, 0.6);
+  border-width: 2px;
+}
+
+.agent-visual-side[data-is-speaking="true"] .agent-visual__core {
+  box-shadow: 0 0 25px rgba(37, 99, 235, 0.8);
+  background: radial-gradient(circle at 30% 30%, #dbeafe, #3b82f6 60%, #1e3a8a 120%);
+}
+
+.agent-visual-side[data-is-speaking="true"] .agent-visual__spark {
+  animation-duration: 1s; /* Move sparks faster */
+  opacity: 1;
 }
 
 .agent-visual__halo {
@@ -346,6 +366,22 @@ textarea {
   font-size: 0.6rem;
   box-shadow: 0 0 10px rgba(37, 99, 235, 0.6);
   z-index: 2;
+  /* Idle breathing animation */
+  animation: agentCoreBreathe 4s ease-in-out infinite;
+}
+
+/* Paused State Core Override */
+.agent-visual-side[data-agent-state='paused'] .agent-visual__core {
+  background: radial-gradient(circle at 30% 30%, #fed7aa, #ea580c 65%, #431407 120%);
+  box-shadow: 0 0 15px rgba(234, 88, 12, 0.6);
+  animation: none;
+}
+
+/* Error State Core Override */
+.agent-visual-side[data-agent-state='error'] .agent-visual__core {
+  background: radial-gradient(circle at 30% 30%, #fecaca, #dc2626 65%, #450a0a 120%);
+  box-shadow: 0 0 15px rgba(220, 38, 38, 0.6);
+  animation: none;
 }
 
 /* Sparks */
@@ -359,25 +395,30 @@ textarea {
   opacity: 0;
 }
 
+/* Default Active State (Silent) */
 .agent-visual-side[data-agent-state='active'] .agent-visual__spark {
+  /* Original gentle float */
   animation: sparkFloat 3s infinite;
-  opacity: 0.8;
+  opacity: 0.6;
+}
+
+/* Speaking State (Active + Voice) */
+.agent-visual-side[data-is-speaking="true"] .agent-visual__spark {
+  /* Same movement, just faster and brighter/more energetic */
+  animation-duration: 1s;
+  opacity: 1;
+  box-shadow: 0 0 10px #fff;
 }
 
 .agent-visual__spark--one { top: 10%; right: 10%; animation-delay: 0s; }
 .agent-visual__spark--two { bottom: 10%; left: 10%; animation-delay: 1.5s; }
 
-/* States */
-.agent-visual-side[data-agent-state='paused'] .agent-visual__core {
-  background: radial-gradient(circle at 30% 30%, #fed7aa, #ea580c 65%, #431407 120%);
-  box-shadow: 0 0 10px rgba(234, 88, 12, 0.6);
+/* Restore original Spark Float Animation */
+@keyframes sparkFloat {
+  0% { transform: translate(0,0); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translate(10px, -10px); opacity: 0; }
 }
-
-.agent-visual-side[data-agent-state='error'] .agent-visual__core {
-  background: radial-gradient(circle at 30% 30%, #fecaca, #dc2626 65%, #450a0a 120%);
-  box-shadow: 0 0 10px rgba(220, 38, 38, 0.6);
-}
-
 .control-group {
   display: flex;
   gap: 0.5rem;
@@ -461,6 +502,17 @@ textarea {
   background: #2563eb;
 }
 
+/* Paused State (Button shows 'Resume'/'Turn On') -> Orange */
+.ua-controls button.agent-control[data-agent-state="resume"] {
+  background: rgba(234, 88, 12, 0.9);
+  color: white;
+}
+
+.ua-controls button.agent-control[data-agent-state="resume"]:hover {
+  background: #ea580c;
+  box-shadow: 0 0 15px rgba(234, 88, 12, 0.4);
+}
+
 .ua-button-label {
   font-size: 0.95rem;
   font-weight: 500;
@@ -503,4 +555,43 @@ textarea {
       width: 3rem;
       padding: 0;
   }
+}
+
+/* Keyframes */
+
+@keyframes agentCoreBreathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+@keyframes agentHaloPulse {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50% { transform: scale(1.05); opacity: 0.6; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.agent-loader {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.invite-hint {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.8);
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  pointer-events: none;
 }

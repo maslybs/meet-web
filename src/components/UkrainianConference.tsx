@@ -27,12 +27,20 @@ function useAudioLevel(participant: Participant | null) {
     const handleLevelChange = (lvl: number) => {
       setLevel(lvl);
     };
+
+    const handleSpeakingChange = () => {
+      // Force update level when speaking status changes, just in case
+      setLevel(participant.audioLevel);
+    };
     
     participant.on('audioLevelChanged', handleLevelChange);
+    participant.on('isSpeakingChanged', handleSpeakingChange);
+    
     setLevel(participant.audioLevel || 0);
     
     return () => {
       participant.off('audioLevelChanged', handleLevelChange);
+      participant.off('isSpeakingChanged', handleSpeakingChange);
     };
   }, [participant]);
   
@@ -417,10 +425,12 @@ function AgentPresenceVisual({ state, participant }: AgentPresenceVisualProps) {
   const audioLevel = useAudioLevel(participant as any); 
 
   // Calculate reactive scale
-  // Base scale is 1. When talking loudly (level 1), scale goes up to ~1.3
-  const scale = Math.max(1, 1 + (audioLevel || 0) * 0.6);
+  // Natural feel: Subtle size change (x0.6), rely on internal animation speed/glow for intensity.
+  const scale = Math.min(1.15, 1 + (audioLevel || 0) * 0.6);
 
   const isConnecting = state === 'requesting' || (state === 'active' && !participant);
+  // Only show speaking animation if active (not paused)
+  const isSpeaking = state === 'active' && (audioLevel || 0) > 0.01;
 
   return (
     <div
@@ -428,6 +438,7 @@ function AgentPresenceVisual({ state, participant }: AgentPresenceVisualProps) {
       aria-hidden="true"
       data-agent-state={state}
       data-agent-connecting={isConnecting}
+      data-is-speaking={isSpeaking}
       title={isConnecting ? 'Асистент підключається...' : 'Асистент активний'}
       style={{
         '--agent-scale': scale,
