@@ -393,13 +393,6 @@ function UkrainianConference({
       {/* Footer Area with Controls and Agent Visual */}
       <div className="ua-footer">
         <div className="ua-controls">
-          <ul className="sr-only" aria-label="Опис кнопок керування конференцією">
-            <li id={micHintId}></li>
-            <li id={cameraHintId}></li>
-            {canSwitchCamera && <li id={switchHintId}></li>}
-            <li id={leaveHintId}></li>
-            {agentControl && <li id={agentControlHintId}></li>}
-          </ul>
 
           <div className="control-group">
             <AccessibleTrackToggle
