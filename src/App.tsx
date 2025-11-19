@@ -697,13 +697,13 @@ export default function App() {
     <main className={`layout${credentials ? ' layout-room-active' : ''}`} data-lk-theme="default">
       {!credentials && (
         <section className="card" aria-live="polite">
-          <h1>{!roomName ? 'Створити трансляцію' : 'Вітаю'} {participantName}</h1>
+          <h1>{participantName ? 'Вітаю' : (!roomName ? 'Створити трансляцію' : 'Вітаю')} {participantName}</h1>
 
           {status && <p className="status-message">{status}</p>}
 
           {!roomName ? (
             <>
-              <p>Натисніть нижче, щоб створити нову трансляцію і запросити асистента.</p>
+              <p>Натисніть нижче, щоб створити нову трансляцію і запросити асистента і інших учасників.</p>
               <div className="actions">
                 <button type="button" onClick={handleCreateRoom} aria-label="Створити трансляцію">
                   Створити трансляцію
