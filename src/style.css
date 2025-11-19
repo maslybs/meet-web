@@ -769,6 +769,7 @@ textarea:focus {
 }
 
 .lk-participant-name {
+  display: none !important;
   /* Ensure text alignment if needed */
   text-align: right;
 }
