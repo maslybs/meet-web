@@ -550,14 +550,14 @@ textarea:focus {
 
 .control-group {
   display: flex;
-  gap: 0.5rem;
+  gap: 1.5rem;
   align-items: center;
 }
 
 .control-group--actions {
-  padding-left: 1rem;
+  padding-left: 1.5rem;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
-  margin-left: 0.5rem;
+  margin-left: 1rem;
 }
 
 /* Buttons in controls */
