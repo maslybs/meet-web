@@ -176,13 +176,13 @@ textarea {
   padding: 1rem;
   z-index: 10;
   pointer-events: none;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.6), transparent);
 }
 
 .ua-room-info h2 {
   margin: 0;
   font-size: 1rem;
-  color: rgba(255,255,255,0.7);
+  color: rgba(255, 255, 255, 0.7);
   font-weight: 500;
 }
 
@@ -190,7 +190,7 @@ textarea {
   font-size: 0.9rem;
   color: #fbbf24;
   margin-top: 0.25rem;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 /* Main Grid Area */
@@ -202,7 +202,8 @@ textarea {
   justify-content: center;
   overflow: hidden;
   padding: 1rem;
-  padding-bottom: 80px; /* Space for controls */
+  padding-bottom: 80px;
+  /* Space for controls */
 }
 
 .ua-grid--solo-agent {
@@ -227,7 +228,7 @@ textarea {
   z-index: 10;
   border-radius: 1rem;
   overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   background: #111;
   transition: all 0.4s ease;
 }
@@ -267,13 +268,15 @@ textarea {
   justify-content: center;
   gap: 1rem;
   padding: 0 1rem;
-  pointer-events: none; /* Allow clicks to pass through empty space */
+  pointer-events: none;
+  /* Allow clicks to pass through empty space */
   z-index: 50;
 }
 
 /* Controls Bar */
 .ua-controls {
-  position: relative; /* Reset absolute */
+  position: relative;
+  /* Reset absolute */
   bottom: auto;
   left: auto;
   transform: none;
@@ -285,11 +288,12 @@ textarea {
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 2rem;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   max-width: 100%;
   flex-wrap: wrap;
   justify-content: center;
-  pointer-events: auto; /* Re-enable clicks */
+  pointer-events: auto;
+  /* Re-enable clicks */
 }
 
 /* Agent Visual (Side Placement) */
@@ -312,7 +316,8 @@ textarea {
 
 /* Speaking State - Make it alive, not just big */
 .agent-visual-side[data-is-speaking="true"] .agent-visual__halo {
-  animation-duration: 2s; /* Pulse faster */
+  animation-duration: 2s;
+  /* Pulse faster */
   border-color: rgba(147, 197, 253, 0.6);
   border-width: 2px;
 }
@@ -323,7 +328,8 @@ textarea {
 }
 
 .agent-visual-side[data-is-speaking="true"] .agent-visual__spark {
-  animation-duration: 1s; /* Move sparks faster */
+  animation-duration: 1s;
+  /* Move sparks faster */
   opacity: 1;
 }
 
@@ -410,15 +416,35 @@ textarea {
   box-shadow: 0 0 10px #fff;
 }
 
-.agent-visual__spark--one { top: 10%; right: 10%; animation-delay: 0s; }
-.agent-visual__spark--two { bottom: 10%; left: 10%; animation-delay: 1.5s; }
+.agent-visual__spark--one {
+  top: 10%;
+  right: 10%;
+  animation-delay: 0s;
+}
+
+.agent-visual__spark--two {
+  bottom: 10%;
+  left: 10%;
+  animation-delay: 1.5s;
+}
 
 /* Restore original Spark Float Animation */
 @keyframes sparkFloat {
-  0% { transform: translate(0,0); opacity: 0; }
-  50% { opacity: 1; }
-  100% { transform: translate(10px, -10px); opacity: 0; }
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate(10px, -10px);
+    opacity: 0;
+  }
 }
+
 .control-group {
   display: flex;
   gap: 0.5rem;
@@ -427,7 +453,7 @@ textarea {
 
 .control-group--actions {
   padding-left: 1rem;
-  border-left: 1px solid rgba(255,255,255,0.1);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
   margin-left: 0.5rem;
 }
 
@@ -461,6 +487,7 @@ textarea {
   color: #fff;
   box-shadow: 0 0 15px rgba(37, 99, 235, 0.4);
 }
+
 .ua-controls button.icon-button.active:hover {
   background: #1d4ed8;
 }
@@ -469,6 +496,7 @@ textarea {
   background: rgba(220, 38, 38, 0.15);
   color: #fca5a5;
 }
+
 .ua-controls button.icon-button.inactive:hover {
   background: rgba(220, 38, 38, 0.25);
 }
@@ -478,6 +506,7 @@ textarea {
   background: rgba(220, 38, 38, 0.2);
   color: #f87171;
 }
+
 .ua-controls button.danger:hover {
   background: rgba(220, 38, 38, 0.4);
 }
@@ -491,11 +520,12 @@ textarea {
   color: white;
   gap: 0.5rem;
 }
+
 /* Force round shape if it has the icon-button class (Invite state) */
 .ua-controls button.agent-control.icon-button {
-    width: 3.5rem;
-    padding: 0;
-    border-radius: 50%;
+  width: 3.5rem;
+  padding: 0;
+  border-radius: 50%;
 }
 
 .ua-controls button.agent-control:hover {
@@ -521,62 +551,90 @@ textarea {
 @media (max-width: 600px) {
   .ua-footer {
     bottom: 1rem;
-    flex-direction: column; /* Stack visual on top or bottom if needed, but row is usually fine */
-    gap: 0.5rem;
+    flex-direction: column-reverse;
+    /* Controls at bottom, visual above */
+    gap: 1rem;
+    align-items: center;
   }
 
   .ua-controls {
     bottom: auto;
     left: auto;
     transform: none;
-    padding: 0.5rem;
-    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    gap: 0.75rem;
     width: auto;
-    border-radius: 1.5rem;
+    max-width: 100%;
+    border-radius: 2rem;
+    justify-content: center;
   }
-  
+
   .ua-controls button {
     width: 3rem;
     height: 3rem;
   }
-  
+
+  /* Hide label text on mobile to save space */
   .ua-button-label {
-     /* On mobile, maybe hide text again to save space? Or keep it if critical. */
-     /* display: none; */ 
-     font-size: 0.85rem;
+    display: none;
   }
-  
+
+  /* Make agent control a round button on mobile since text is hidden */
   .ua-controls button.agent-control {
-    /* width: 3rem; */ /* Let it expand for text */
-    padding: 0 1rem; 
-    /* border-radius: 50%; */
+    width: 3rem;
+    padding: 0;
+    border-radius: 50%;
   }
+
   .ua-controls button.agent-control.icon-button {
-      width: 3rem;
-      padding: 0;
+    width: 3rem;
+    padding: 0;
+  }
+
+  .agent-visual-side {
+    /* Make visual slightly smaller on mobile */
+    transform: scale(calc(var(--agent-scale, 1) * 0.9));
   }
 }
 
 /* Keyframes */
 
 @keyframes agentCoreBreathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.15); }
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.15);
+  }
 }
 
 @keyframes agentHaloPulse {
-  0%, 100% { transform: scale(1); opacity: 0.4; }
-  50% { transform: scale(1.05); opacity: 0.6; }
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+
+  50% {
+    transform: scale(1.05);
+    opacity: 0.6;
+  }
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .agent-loader {
   width: 20px;
   height: 20px;
-  border: 2px solid rgba(255,255,255,0.3);
+  border: 2px solid rgba(255, 255, 255, 0.3);
   border-top-color: #fff;
   border-radius: 50%;
   animation: spin 1s linear infinite;
@@ -587,11 +645,27 @@ textarea {
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0,0,0,0.8);
+  background: rgba(0, 0, 0, 0.8);
   padding: 0.5rem 1rem;
   border-radius: 0.5rem;
   margin-bottom: 1rem;
   font-size: 0.8rem;
   white-space: nowrap;
   pointer-events: none;
+}
+
+/* Move participant metadata (name container) to top right */
+.lk-participant-metadata {
+  flex-direction: row-reverse !important;
+  /* If there are icons, flip them */
+  top: 0.5rem !important;
+  right: 0.5rem !important;
+  bottom: auto !important;
+  left: auto !important;
+  justify-content: flex-end !important;
+}
+
+.lk-participant-name {
+  /* Ensure text alignment if needed */
+  text-align: right;
 }

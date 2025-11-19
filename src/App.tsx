@@ -789,14 +789,21 @@ export default function App() {
             style={{ height: '100%', width: '100%' }}
           >
             <UkrainianConference
-              onLeave={handleDisconnect}
+              onLeave={() => {
+                setCredentials(null);
+                setStatus(null);
+                setError(null);
+                setAgentStatus('idle');
+                setAgentMessage(null);
+              }}
               agentControl={agentControl}
-              showInviteHint={showInviteHint}
+              showInviteHint={!credentials && !connecting && !error && !status}
               roomName={roomName}
               agentMessage={agentMessage}
               agentIdentity={agentIdentity}
               onAgentPresenceChange={handleAgentPresenceChange}
               agentStatus={agentStatus}
+              isDemoRoom={Boolean(demoRoomName && roomName === demoRoomName)}
             />
           </LiveKitRoom>
         </section>

@@ -119,6 +119,7 @@ interface UkrainianConferenceProps {
   agentIdentity: string;
   onAgentPresenceChange: (present: boolean, agentId?: string | null) => void;
   agentStatus: AgentStatus;
+  isDemoRoom: boolean;
 }
 
 function UkrainianConference({
@@ -130,6 +131,7 @@ function UkrainianConference({
   agentIdentity,
   onAgentPresenceChange,
   agentStatus,
+  isDemoRoom,
 }: UkrainianConferenceProps) {
   const tracks = useTracks(
     [
@@ -338,7 +340,9 @@ function UkrainianConference({
     <div className="conference-layout">
       <div className="ua-header">
         <div className="ua-room-info" role="status">
-          <h2>{roomName || 'Кімната'}</h2>
+          {isDemoRoom ? (
+            <h2>Демо кімната</h2>
+          ) : null}
           {agentMessage && (
             <div className="agent-status-message" role="alert">
               {agentMessage}
