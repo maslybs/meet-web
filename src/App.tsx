@@ -18,6 +18,7 @@ interface AgentMetadata {
   participantName: string;
   gemini_api_key?: string;
   multi_participant?: boolean;
+  greetingMode?: 'invite' | 'resume';
 }
 
 const envValues = import.meta.env as Record<string, string | undefined>;
@@ -553,6 +554,7 @@ export default function App() {
           roomName: trimmedRoom,
           room: trimmedRoom,
           participantName: trimmedParticipantName || 'Учасник',
+          greetingMode: mode,
         };
 
         if (effectiveAgentToken) {

@@ -113,16 +113,51 @@ export async function deleteAgentDispatch(context: DispatchContext, room: string
   }
 }
 
+export async function removeParticipant(context: DispatchContext, room: string, identity: string) {
+  const res = await fetch(`${context.baseUrl}/twirp/livekit.RoomService/RemoveParticipant`, {
+    method: 'POST',
+    headers: context.headers,
+    body: JSON.stringify({ room, identity }),
+  });
+
+  if (!res.ok && res.status !== 404) {
+    // Log but don't fail the whole operation, as participant might already be gone
+    const errBody = await res.text();
+    console.warn(`RemoveParticipant failed: ${errBody}`);
+  }
+}
+
 export async function removeAgentDispatch(env: LiveKitEnv, room: string, agentName: string) {
   const context = await buildDispatchContext(env, room);
-  const all = await listDispatches(context, room);
+  
+  // 1. Kill the dispatch record
+  const allDispatches = await listDispatches(context, room);
   const normalized = normalizeAgentName(agentName);
-  const matches = all.filter(
+  const matches = allDispatches.filter(
     (dispatch) => normalizeAgentName(dispatch.agentName) === normalized && dispatch.id,
   );
 
   await Promise.all(
     matches.map((dispatch) => deleteAgentDispatch(context, room, dispatch.id as string)),
+  );
+
+  // 2. Find and Kick the actual participant(s)
+  // We can't rely solely on 'agentName' because the actual identity might differ (e.g. "agent-xyz")
+  const participants = await listParticipants(context, room);
+  const agentParticipants = participants.filter(p => {
+      const id = (p.identity || '').trim();
+      const lowerId = id.toLowerCase();
+      // Match exact config name OR standard "agent-" prefix which implies a bot
+      return lowerId === normalized || lowerId.startsWith('agent-');
+  });
+
+  await Promise.all(
+      agentParticipants.map(p => {
+          if (p.identity) {
+              return removeParticipant(context, room, p.identity);
+          }
+          return Promise.resolve();
+      })
   );
 
   return { removed: matches.length };
