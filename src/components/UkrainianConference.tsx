@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import {
-  DisconnectButton,
   GridLayout,
   ParticipantTile,
   RoomAudioRenderer,
@@ -13,17 +12,18 @@ import type { Participant } from 'livekit-client';
 import { AccessibleTrackToggle } from './AccessibleTrackToggle';
 import { CameraSwitchButton } from './CameraSwitchButton';
 import type { AgentControlConfig, AgentStatus } from '../types/agent';
+import { useConnectionSounds } from '../hooks/useConnectionSounds';
 
 // Custom hook since it's not exported in this version of components-react
 function useAudioLevel(participant: Participant | null) {
   const [level, setLevel] = useState(0);
-  
+
   useEffect(() => {
     if (!participant) {
       setLevel(0);
       return;
     }
-    
+
     const handleLevelChange = (lvl: number) => {
       setLevel(lvl);
     };
@@ -32,18 +32,18 @@ function useAudioLevel(participant: Participant | null) {
       // Force update level when speaking status changes, just in case
       setLevel(participant.audioLevel);
     };
-    
+
     participant.on('audioLevelChanged', handleLevelChange);
     participant.on('isSpeakingChanged', handleSpeakingChange);
-    
+
     setLevel(participant.audioLevel || 0);
-    
+
     return () => {
       participant.off('audioLevelChanged', handleLevelChange);
       participant.off('isSpeakingChanged', handleSpeakingChange);
     };
   }, [participant]);
-  
+
   return level;
 }
 
@@ -87,7 +87,7 @@ const CamOffIcon = () => (
 const InviteIcon = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 3V4M12 20V21M21 12H20M4 12H3M18.364 5.636L17.657 6.343M6.343 17.657L5.636 18.364M18.364 18.364L17.657 17.657M6.343 6.343L5.636 5.636" />
-    <path d="M12 12L12 12.01" strokeWidth="4"/>
+    <path d="M12 12L12 12.01" strokeWidth="4" />
   </svg>
 );
 
@@ -163,7 +163,7 @@ function UkrainianConference({
       if (normalizedIdentity.startsWith('agent-')) {
         return true;
       }
-      
+
       if (normalizedName.includes('agent')) {
         return true;
       }
@@ -248,7 +248,7 @@ function UkrainianConference({
     () => trackWithPlaceholders.filter((track) => !track.participant.isLocal),
     [trackWithPlaceholders],
   );
-  
+
   // Explicitly use ONLY filtered tracks for the grid
   const humanRemoteTracks = useMemo(
     () =>
@@ -284,6 +284,56 @@ function UkrainianConference({
     onAgentPresenceChange(Boolean(agentParticipant), agentParticipant?.identity ?? agentParticipant?.name ?? null);
   }, [agentParticipant, onAgentPresenceChange]);
 
+  // --- Waiting Sound Logic ---
+  // We want to play the sound if:
+  // 1. Agent is being requested (waiting for join)
+  // 2. Agent has joined (active) but hasn't spoken yet (waiting for greeting)
+
+  const [hasAgentSpoken, setHasAgentSpoken] = useState(false);
+  const agentAudioLevel = useAudioLevel(agentParticipant);
+
+  // Reset hasAgentSpoken when agent leaves or status changes to non-active
+  useEffect(() => {
+    if (agentStatus !== 'active' && agentStatus !== 'requesting') {
+      setHasAgentSpoken(false);
+    }
+  }, [agentStatus]);
+
+  // Detect speech
+  useEffect(() => {
+    if (agentStatus === 'active' && agentParticipant && agentAudioLevel > 0.01) {
+      setHasAgentSpoken(true);
+    }
+  }, [agentStatus, agentParticipant, agentAudioLevel]);
+
+  // Play sound if requesting OR (active AND not spoken yet)
+  // But add a safety timeout (e.g. 10s) after active to stop sound even if no speech detected, 
+  // to avoid eternal ringing if agent is silent.
+  const [activeTimeout, setActiveTimeout] = useState(false);
+
+  useEffect(() => {
+    if (agentStatus === 'active') {
+      const timer = setTimeout(() => setActiveTimeout(true), 10000);
+      return () => clearTimeout(timer);
+    } else {
+      setActiveTimeout(false);
+    }
+  }, [agentStatus]);
+
+  const shouldPlayWaitingSound =
+    agentStatus === 'requesting' ||
+    (agentStatus === 'active' && !hasAgentSpoken && !activeTimeout);
+
+  const { playDisconnectSound, initAudio } = useConnectionSounds(shouldPlayWaitingSound);
+
+  const handleDisconnect = () => {
+    playDisconnectSound();
+    // Small delay to let the sound start before tearing down
+    setTimeout(() => {
+      room.disconnect();
+    }, 200);
+  };
+
   return (
     <div className="conference-layout">
       <div className="ua-header">
@@ -296,7 +346,7 @@ function UkrainianConference({
           )}
         </div>
       </div>
-      
+
       <div
         className={`ua-grid ${isSoloMode ? 'ua-grid--solo-agent' : ''}`}
         data-participant-count={tileCount}
@@ -340,7 +390,7 @@ function UkrainianConference({
             >
               {(enabled) => enabled ? <MicOnIcon /> : <MicOffIcon />}
             </AccessibleTrackToggle>
-            
+
             <AccessibleTrackToggle
               source={Track.Source.Camera}
               baseLabel="Камера"
@@ -349,7 +399,7 @@ function UkrainianConference({
             >
               {(enabled) => enabled ? <CamOnIcon /> : <CamOffIcon />}
             </AccessibleTrackToggle>
-            
+
             {canSwitchCamera && (
               <CameraSwitchButton descriptionId={switchHintId} />
             )}
@@ -360,7 +410,10 @@ function UkrainianConference({
               <button
                 type="button"
                 className={`ua-button agent-control ${agentControl.state === 'requesting' ? 'icon-button' : ''}`}
-                onClick={agentControl.onClick}
+                onClick={(e) => {
+                  initAudio();
+                  agentControl.onClick(e);
+                }}
                 disabled={agentControl.disabled}
                 aria-label={agentControl.ariaLabel}
                 title={agentControl.label}
@@ -368,13 +421,13 @@ function UkrainianConference({
                 aria-describedby={agentControlHintId}
               >
                 {agentControl.state === 'pause' ? (
-                   <PauseIcon />
+                  <PauseIcon />
                 ) : agentControl.state === 'resume' ? (
-                   <ResumeIcon />
+                  <ResumeIcon />
                 ) : agentControl.state === 'invite' ? (
-                   <InviteIcon />
+                  <InviteIcon />
                 ) : (
-                   <SpinnerIcon />
+                  <SpinnerIcon />
                 )}
                 {/* Show label text for Invite/Pause/Resume states */}
                 {(agentControl.state === 'pause' || agentControl.state === 'resume' || agentControl.state === 'invite') && (
@@ -383,30 +436,32 @@ function UkrainianConference({
               </button>
             )}
 
-            <DisconnectButton
+            <button
+              type="button"
               className="ua-button danger"
               aria-label="Завершити"
               aria-describedby={leaveHintId}
+              onClick={handleDisconnect}
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                 <path d="M16 12H22M22 12L19 9M22 12L19 15M12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M16 12H22M22 12L19 9M22 12L19 15M12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-            </DisconnectButton>
+            </button>
           </div>
 
           <RoomAudioRenderer />
-          
+
           {showInviteHint && !agentControl && (
-             <div className="invite-hint" role="status">
-               Щоб запросити асистента, переконайтеся, що сервер налаштовано.
-             </div>
+            <div className="invite-hint" role="status">
+              Щоб запросити асистента, переконайтеся, що сервер налаштовано.
+            </div>
           )}
         </div>
 
         {/* Agent Visual (Orb) - Placed to the right of controls */}
         {showAgentAnimation && (
-          <AgentPresenceVisual 
-            state={agentStatus} 
+          <AgentPresenceVisual
+            state={agentStatus}
             participant={agentParticipant}
           />
         )}
@@ -422,7 +477,7 @@ interface AgentPresenceVisualProps {
 
 function AgentPresenceVisual({ state, participant }: AgentPresenceVisualProps) {
   // Cast to any because standard types might expect TrackReference, but newer SDKs handle Participant or we handle nulls safely
-  const audioLevel = useAudioLevel(participant as any); 
+  const audioLevel = useAudioLevel(participant as any);
 
   // Calculate reactive scale
   // Natural feel: Subtle size change (x0.6), rely on internal animation speed/glow for intensity.
@@ -448,7 +503,7 @@ function AgentPresenceVisual({ state, participant }: AgentPresenceVisualProps) {
       <div className="agent-visual__halo agent-visual__halo--inner" />
       <div className="agent-visual__core">
         {isConnecting ? (
-           <div className="agent-loader" />
+          <div className="agent-loader" />
         ) : (
           <>
             <div className="agent-visual__spark agent-visual__spark--one" />

@@ -410,7 +410,7 @@ export default function App() {
 
   useEffect(() => {
     const previous = previousAgentStatusRef.current;
-   
+
     if (agentStatus !== 'paused' && pauseRequestedRef.current && agentStatus !== 'requesting') {
       pauseRequestedRef.current = false;
     }
@@ -532,22 +532,22 @@ export default function App() {
 
   const ensureAgentActive = useCallback(
     async (mode: 'invite' | 'resume') => {
-      if (!credentials) { 
+      if (!credentials) {
         return;
       }
-      if (!trimmedRoom) { 
+      if (!trimmedRoom) {
         return;
       }
-      if (mode === 'invite' && (agentStatus === 'active' || agentStatus === 'paused')) { 
+      if (mode === 'invite' && (agentStatus === 'active' || agentStatus === 'paused')) {
         return;
       }
-      if (!effectiveAgentToken && !isTokenlessRoom) { 
+      if (!effectiveAgentToken && !isTokenlessRoom) {
         return;
       }
 
       try {
         pauseRequestedRef.current = false;
-        setAgentStatus('requesting'); 
+        setAgentStatus('requesting');
         setAgentMessage(null);
 
         const metadata: AgentMetadata = {
@@ -562,14 +562,14 @@ export default function App() {
         }
         const dispatchResult = await ensureAgentDispatch(trimmedRoom, metadata);
         if (dispatchResult.agentPresent && dispatchResult.active) {
-          setAgentStatus('active'); 
+          setAgentStatus('active');
           if (!dispatchResult.dispatch?.agentName && configuredAgentIdentity) {
             setAgentIdentity((prev: string) => prev || configuredAgentIdentity);
           }
           pauseRequestedRef.current = false;
           return;
         }
- 
+
       } catch (error) {
         console.error('ensureAgentActive failed', error);
         setAgentStatus('error');
@@ -588,22 +588,22 @@ export default function App() {
         if (AudioContext) {
           const ctx = new AudioContext();
           // Just creating/resuming is often enough to flag the document as "user activated" for audio
-          ctx.resume().then(() => ctx.close()).catch(() => {});
+          ctx.resume().then(() => ctx.close()).catch(() => { });
         }
       } catch (e) {
         // ignore errors
       }
     };
     unlockAudio();
-    
+
     void ensureAgentActive('invite');
   }, [ensureAgentActive]);
 
   const handleToggleAgentListening = useCallback(async () => {
-    if (!credentials) { 
+    if (!credentials) {
       return;
     }
-    if (!trimmedRoom) { 
+    if (!trimmedRoom) {
       return;
     }
 
@@ -618,7 +618,7 @@ export default function App() {
 
     try {
       pauseRequestedRef.current = true;
-      setAgentStatus('requesting'); 
+      setAgentStatus('requesting');
 
       const response = await fetch(`/api/dispatch?room=${encodeURIComponent(trimmedRoom)}`, {
         method: 'DELETE',
@@ -631,7 +631,7 @@ export default function App() {
     } catch (error) {
       console.error('handleToggleAgentListening failed', error);
       pauseRequestedRef.current = false;
-      setAgentStatus('error'); 
+      setAgentStatus('error');
     }
   }, [agentStatus, credentials, ensureAgentActive, trimmedRoom]);
 
@@ -651,35 +651,35 @@ export default function App() {
     }
 
     if (agentStatus === 'active') {
-       return {
+      return {
         label: 'Пауза асистента',
         ariaLabel: 'Пауза асистента. Тимчасово вимкнути мікрофон асистента',
         disabled: isPausingRequest,
         onClick: handleToggleAgentListening,
         hint: 'Асистент тимчасово відійде.',
-        state: 'pause', 
-       };
+        state: 'pause',
+      };
     }
 
     if (agentStatus === 'paused') {
-        return {
-            label: 'Увімкнути асистента',
-            ariaLabel: 'Увімкнути асистента. Асистент знову буде вас чути',
-            disabled: false,
-            onClick: handleToggleAgentListening,
-            hint: 'Асистент повернеться до розмови.',
-            state: 'resume',
-        };
+      return {
+        label: 'Увімкнути асистента',
+        ariaLabel: 'Увімкнути асистента. Асистент знову буде вас чути',
+        disabled: false,
+        onClick: handleToggleAgentListening,
+        hint: 'Асистент повернеться до розмови.',
+        state: 'resume',
+      };
     }
 
     // Requesting state
     return {
-        label: '...',
-        ariaLabel: 'Обробка запиту...',
-        disabled: true,
-        onClick: () => {},
-        hint: 'Зачекайте...',
-        state: 'requesting',
+      label: '...',
+      ariaLabel: 'Обробка запиту...',
+      disabled: true,
+      onClick: () => { },
+      hint: 'Зачекайте...',
+      state: 'requesting',
     };
   }, [
     agentStatus,
@@ -697,7 +697,7 @@ export default function App() {
     <main className={`layout${credentials ? ' layout-room-active' : ''}`} data-lk-theme="default">
       {!credentials && (
         <section className="card" aria-live="polite">
-          <h1>{!roomName ? 'Створити трансляцію' : 'Вітаю' } {participantName}</h1>
+          <h1>{!roomName ? 'Створити трансляцію' : 'Вітаю'} {participantName}</h1>
 
           {status && <p className="status-message">{status}</p>}
 
@@ -771,7 +771,7 @@ export default function App() {
             </>
           )}
 
-          
+
           {error && <p className="error">{error}</p>}
         </section>
       )}
