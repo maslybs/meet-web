@@ -394,18 +394,18 @@ function UkrainianConference({
       <div className="ua-footer">
         <div className="ua-controls">
           <ul className="sr-only" aria-label="Опис кнопок керування конференцією">
-            <li id={micHintId}>Вмикає або вимикає ваш мікрофон.</li>
-            <li id={cameraHintId}>Вмикає або вимикає вашу камеру.</li>
-            {canSwitchCamera && <li id={switchHintId}>Перемикає між передньою та задньою камерами.</li>}
-            <li id={leaveHintId}>Завершує зустріч і повертає на головну.</li>
-            {agentControl && <li id={agentControlHintId}>{agentControl.hint}</li>}
+            <li id={micHintId}></li>
+            <li id={cameraHintId}></li>
+            {canSwitchCamera && <li id={switchHintId}></li>}
+            <li id={leaveHintId}></li>
+            {agentControl && <li id={agentControlHintId}></li>}
           </ul>
 
           <div className="control-group">
             <AccessibleTrackToggle
               source={Track.Source.Microphone}
               baseLabel="Мікрофон"
-              aria-describedby={micHintId}
+              aria-describedby=""
             >
               {(enabled) => enabled ? <MicOnIcon /> : <MicOffIcon />}
             </AccessibleTrackToggle>
@@ -413,7 +413,7 @@ function UkrainianConference({
             <AccessibleTrackToggle
               source={Track.Source.Camera}
               baseLabel="Камера"
-              aria-describedby={cameraHintId}
+              aria-describedby=""
               onChange={setCanSwitchCamera}
             >
               {(enabled) => enabled ? <CamOnIcon /> : <CamOffIcon />}
@@ -437,7 +437,7 @@ function UkrainianConference({
                 aria-label={agentControl.ariaLabel}
                 title={agentControl.label}
                 data-agent-state={agentControl.state}
-                aria-describedby={agentControlHintId}
+                aria-describedby=""
               >
                 {agentControl.state === 'pause' ? (
                   <PauseIcon />
@@ -459,7 +459,7 @@ function UkrainianConference({
               type="button"
               className="ua-button danger"
               aria-label="Завершити"
-              aria-describedby={leaveHintId}
+              aria-describedby=""
               onClick={handleDisconnect}
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -469,12 +469,6 @@ function UkrainianConference({
           </div>
 
           <RoomAudioRenderer />
-
-          {showInviteHint && !agentControl && (
-            <div className="invite-hint" role="status">
-              Щоб запросити асистента, переконайтеся, що сервер налаштовано.
-            </div>
-          )}
         </div>
 
         {/* Agent Visual (Orb) - Placed to the right of controls */}
