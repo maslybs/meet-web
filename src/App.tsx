@@ -411,7 +411,7 @@ export default function App() {
   useEffect(() => {
     const previous = previousAgentStatusRef.current;
 
-    if (agentStatus !== 'paused' && pauseRequestedRef.current && agentStatus !== 'requesting') {
+    if (agentStatus !== 'paused' && pauseRequestedRef.current && agentStatus !== 'requesting' && agentStatus !== 'disconnecting') {
       pauseRequestedRef.current = false;
     }
     previousAgentStatusRef.current = agentStatus;
@@ -618,7 +618,7 @@ export default function App() {
 
     try {
       pauseRequestedRef.current = true;
-      setAgentStatus('requesting');
+      setAgentStatus('disconnecting');
 
       const response = await fetch(`/api/dispatch?room=${encodeURIComponent(trimmedRoom)}`, {
         method: 'DELETE',

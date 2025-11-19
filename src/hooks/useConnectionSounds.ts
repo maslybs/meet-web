@@ -94,7 +94,48 @@ export function useConnectionSounds(isConnecting: boolean) {
     };
 
     // --- Disconnect Sound Logic ---
-    const playDisconnectSound = useCallback(() => {
+    // Agent Disconnect Sound: Descending Chord (Sawtooth + Sine)
+    const playAgentDisconnectSound = useCallback(() => {
+        const ctx = getContext();
+        if (!ctx) return;
+
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch(() => { });
+        }
+
+        const now = ctx.currentTime;
+
+        // Oscillator 1: Sawtooth for "buzz" (Power down feel)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.type = 'sawtooth';
+        osc1.frequency.setValueAtTime(400, now);
+        osc1.frequency.exponentialRampToValueAtTime(50, now + 0.5);
+        gain1.gain.setValueAtTime(0, now);
+        gain1.gain.linearRampToValueAtTime(0.1, now + 0.05);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        osc1.start(now);
+        osc1.stop(now + 0.5);
+
+        // Oscillator 2: Sine for "weight" (Low drop)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(200, now);
+        osc2.frequency.exponentialRampToValueAtTime(20, now + 0.5);
+        gain2.gain.setValueAtTime(0, now);
+        gain2.gain.linearRampToValueAtTime(0.2, now + 0.05);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        osc2.start(now);
+        osc2.stop(now + 0.5);
+    }, []);
+
+    // User Disconnect Sound: Simple Descending Tone (Sine)
+    const playUserDisconnectSound = useCallback(() => {
         const ctx = getContext();
         if (!ctx) return;
 
@@ -110,12 +151,9 @@ export function useConnectionSounds(isConnecting: boolean) {
         gain.connect(ctx.destination);
 
         osc.type = 'sine';
-
-        // Descending tone
         osc.frequency.setValueAtTime(400, now);
         osc.frequency.exponentialRampToValueAtTime(100, now + 0.3);
 
-        // Envelope
         gain.gain.setValueAtTime(0, now);
         gain.gain.linearRampToValueAtTime(0.3, now + 0.05);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
@@ -132,5 +170,5 @@ export function useConnectionSounds(isConnecting: boolean) {
         }
     }, []);
 
-    return { playDisconnectSound, initAudio };
+    return { playAgentDisconnectSound, playUserDisconnectSound, initAudio };
 }

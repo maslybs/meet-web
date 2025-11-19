@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   GridLayout,
   ParticipantTile,
@@ -326,10 +326,25 @@ function UkrainianConference({
     agentStatus === 'requesting' ||
     (agentStatus === 'active' && !hasAgentSpoken && !activeTimeout);
 
-  const { playDisconnectSound, initAudio } = useConnectionSounds(shouldPlayWaitingSound);
+  const { playAgentDisconnectSound, playUserDisconnectSound, initAudio } = useConnectionSounds(shouldPlayWaitingSound);
+
+  // Play disconnect sound when agent goes from active to idle/paused OR disconnecting
+  const prevAgentStatus = useRef(agentStatus);
+  useEffect(() => {
+    // If we are disconnecting, play sound immediately
+    if (agentStatus === 'disconnecting' && prevAgentStatus.current === 'active') {
+      playUserDisconnectSound();
+    }
+    // Fallback for other transitions if needed, but 'disconnecting' covers the pause click
+    else if (prevAgentStatus.current === 'active' && (agentStatus === 'idle' || agentStatus === 'paused')) {
+      playUserDisconnectSound();
+    }
+    prevAgentStatus.current = agentStatus;
+  }, [agentStatus, playUserDisconnectSound]);
 
   const handleDisconnect = () => {
-    playDisconnectSound();
+    // User leaving - no sound requested
+
     // Small delay to let the sound start before tearing down
     setTimeout(() => {
       room.disconnect();
