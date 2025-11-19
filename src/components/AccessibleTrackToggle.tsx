@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { forwardRef, ReactNode } from 'react';
 import { useTrackToggle } from '@livekit/components-react';
 import type { TrackToggleProps } from '@livekit/components-react';
 import type { ToggleSource } from '@livekit/components-core';
@@ -9,6 +9,7 @@ export interface AccessibleTrackToggleProps extends LiveKitTrackToggleProps {
   baseLabel: string;
   labelOn?: string;
   labelOff?: string;
+  children?: ReactNode | ((enabled: boolean) => ReactNode);
 }
 
 export const AccessibleTrackToggle = forwardRef<HTMLButtonElement, AccessibleTrackToggleProps>(
@@ -21,15 +22,19 @@ export const AccessibleTrackToggle = forwardRef<HTMLButtonElement, AccessibleTra
       (enabled
         ? labelOn ?? `${baseLabel}. Зараз увімкнено`
         : labelOff ?? `${baseLabel}. Зараз вимкнено`);
+    
     const mergedProps = {
       ...buttonProps,
       'aria-label': computedLabel,
       'aria-pressed': enabled,
+      title: computedLabel,
       type: 'button' as const,
+      className: `ua-button icon-button ${enabled ? 'active' : 'inactive'}`,
     };
+
     return (
       <button {...mergedProps} ref={ref}>
-        {children ?? baseLabel}
+        {typeof children === 'function' ? children(enabled) : children ?? baseLabel}
       </button>
     );
   },

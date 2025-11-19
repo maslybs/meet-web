@@ -112,9 +112,9 @@ function formatAgentErrorMessage(
       return 'Немає дозволу на використання цього LLM. Зверніться до адміністратора.';
     default: {
       if (detail && detail.trim()) {
-        return `Не вдалося запустити ШІ помічника. ${detail.trim()}`;
+        return `Не вдалося запустити ШІ асистента. ${detail.trim()}`;
       }
-      return 'Не вдалося запустити ШІ помічника. Спробуйте ще раз.';
+      return 'Не вдалося запустити ШІ асистента. Спробуйте ще раз.';
     }
   }
 }
@@ -570,13 +570,29 @@ export default function App() {
       } catch (error) {
         console.error('ensureAgentActive failed', error);
         setAgentStatus('error');
-        setAgentMessage('Не вдалося запросити ШІ помічника. Перевірте з’єднання або токен і спробуйте ще раз.');
+        setAgentMessage('Не вдалося запросити ШІ асистента. Перевірте з’єднання або токен і спробуйте ще раз.');
       }
     },
     [credentials, trimmedRoom, effectiveAgentToken, isTokenlessRoom, trimmedParticipantName, isCreator, agentStatus, configuredAgentIdentity],
   );
 
   const handleRequestAgent = useCallback(() => {
+    // Mobile Safari/Chrome Autoplay Fix:
+    // Explicitly resume AudioContext on user interaction to allow future agent audio.
+    const unlockAudio = () => {
+      try {
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContext) {
+          const ctx = new AudioContext();
+          // Just creating/resuming is often enough to flag the document as "user activated" for audio
+          ctx.resume().then(() => ctx.close()).catch(() => {});
+        }
+      } catch (e) {
+        // ignore errors
+      }
+    };
+    unlockAudio();
+    
     void ensureAgentActive('invite');
   }, [ensureAgentActive]);
 
@@ -617,22 +633,51 @@ export default function App() {
   }, [agentStatus, credentials, ensureAgentActive, trimmedRoom]);
 
   const agentControl = useMemo<AgentControlConfig | null>(() => {
- 
-      if(agentStatus === 'idle'){
-        if (!canInviteAgent) {
-          return null;
-        }
-        return {
-          label: 'Запросити помічника',
-          ariaLabel: 'Запросити ШІ помічника до кімнати',
-          disabled: inviteDisabled,
-          onClick: handleRequestAgent,
-          hint: 'Запросити помічника: додає асистента, який допомагатиме користувачеві.',
-          state: 'invite',
-        };
+    if (agentStatus === 'idle' || agentStatus === 'error') {
+      if (!canInviteAgent) {
+        return null;
       }
+      return {
+        label: 'Запросити асистента',
+        ariaLabel: 'Запросити ШІ асистента до кімнати',
+        disabled: inviteDisabled,
+        onClick: handleRequestAgent,
+        hint: 'Запросити асистента: додає асистента, який допомагатиме користувачеві.',
+        state: 'invite',
+      };
+    }
 
-      return null;
+    if (agentStatus === 'active') {
+       return {
+        label: 'Пауза асистента',
+        ariaLabel: 'Пауза асистента. Тимчасово вимкнути мікрофон асистента',
+        disabled: isPausingRequest,
+        onClick: handleToggleAgentListening,
+        hint: 'Асистент тимчасово відійде.',
+        state: 'pause', 
+       };
+    }
+
+    if (agentStatus === 'paused') {
+        return {
+            label: 'Увімкнути асистента',
+            ariaLabel: 'Увімкнути асистента. Асистент знову буде вас чути',
+            disabled: false,
+            onClick: handleToggleAgentListening,
+            hint: 'Асистент повернеться до розмови.',
+            state: 'resume',
+        };
+    }
+
+    // Requesting state
+    return {
+        label: '...',
+        ariaLabel: 'Обробка запиту...',
+        disabled: true,
+        onClick: () => {},
+        hint: 'Зачекайте...',
+        state: 'requesting',
+    };
   }, [
     agentStatus,
     canInviteAgent,
@@ -655,7 +700,7 @@ export default function App() {
 
           {!roomName ? (
             <>
-              <p>Натисніть нижче, щоб створити нову трансляцію і запросити помічника.</p>
+              <p>Натисніть нижче, щоб створити нову трансляцію і запросити асистента.</p>
               <div className="actions">
                 <button type="button" onClick={handleCreateRoom} aria-label="Створити трансляцію">
                   Створити трансляцію
@@ -735,7 +780,7 @@ export default function App() {
             token={credentials.token}
             connect
             audio
-            video
+            video={false}
             options={liveKitOptions}
             onDisconnected={handleDisconnect}
             style={{ height: '100%', width: '100%' }}
