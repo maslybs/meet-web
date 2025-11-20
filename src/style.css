@@ -102,6 +102,25 @@ button:focus-visible {
   min-height: 100vh;
 }
 
+.language-switch {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.language-switch select {
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.6);
+  color: #e2e8f0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.95rem;
+}
+
 .layout.layout-room-active {
   align-items: flex-start;
   justify-content: center;

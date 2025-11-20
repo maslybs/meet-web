@@ -5,6 +5,8 @@ import './style.css';
 
 import UkrainianConference from './components/UkrainianConference';
 import type { AgentControlConfig, AgentStatus } from './types/agent';
+import { detectInitialLocale, getTranslations, Locale, LOCALE_STORAGE_KEY } from './i18n';
+import type { Translations } from './i18n';
 
 interface TokenResponse {
   token: string;
@@ -97,6 +99,7 @@ function isTokenOptionalRoom(room: string): boolean {
 }
 
 function formatAgentErrorMessage(
+  translations: Translations,
   code?: string | null,
   serverMessage?: string | null,
   detail?: string | null,
@@ -108,14 +111,14 @@ function formatAgentErrorMessage(
 
   switch (code) {
     case 'invalid_api_key':
-      return 'Неправильний LLM токен. Перевірте налаштування і спробуйте ще раз.';
+      return translations.errors.invalidApiKey;
     case 'permission_denied':
-      return 'Немає дозволу на використання цього LLM. Зверніться до адміністратора.';
+      return translations.errors.permissionDenied;
     default: {
       if (detail && detail.trim()) {
-        return `Не вдалося запустити ШІ асистента. ${detail.trim()}`;
+        return `${translations.errors.agentStartFailed} ${detail.trim()}`;
       }
-      return 'Не вдалося запустити ШІ асистента. Спробуйте ще раз.';
+      return translations.errors.agentStartFailed;
     }
   }
 }
@@ -140,7 +143,11 @@ type DispatchResponse = {
   dispatch?: { agentName?: string | null } | null;
 };
 
-async function ensureAgentDispatch(room: string, metadata?: AgentMetadata): Promise<DispatchResponse> {
+async function ensureAgentDispatch(
+  room: string,
+  metadata?: AgentMetadata,
+  translations?: Translations,
+): Promise<DispatchResponse> {
   try {
     const response = await fetch('/api/dispatch', {
       method: 'POST',
@@ -155,7 +162,8 @@ async function ensureAgentDispatch(room: string, metadata?: AgentMetadata): Prom
     });
     const text = await response.text();
     if (!response.ok) {
-      throw new Error(text || `Не вдалося активувати асистента (код ${response.status}).`);
+      const fallback = translations?.errors.agentStartFailed ?? 'Failed to start the AI assistant.';
+      throw new Error(text || `${fallback} (${response.status}).`);
     }
     if (!text.trim()) {
       return {};
@@ -171,7 +179,7 @@ async function ensureAgentDispatch(room: string, metadata?: AgentMetadata): Prom
   }
 }
 
-async function requestToken(room: string, name: string) {
+async function requestToken(translations: Translations, room: string, name: string) {
   const url = new URL(`/api/token`, window.location.origin);
   url.searchParams.set('room', room);
   url.searchParams.set('name', name);
@@ -181,20 +189,20 @@ async function requestToken(room: string, name: string) {
   const text = await response.text();
 
   if (!response.ok) {
-    throw new Error(text || `Сервер токена повернув помилку ${response.status}.`);
+    throw new Error(text || `${translations.errors.tokenRequestFailed} (${response.status}).`);
   }
 
   const trimmed = text.trim();
   if (contentType.includes('text/html') || trimmed.startsWith('<!DOCTYPE')) {
     throw new Error(
-      'Не вдалося отримати токен. Переконайтесь, що запущено бекенд, який відповідає на /api/token (наприклад, wrangler pages dev).',
+      translations.errors.tokenHtmlResponse,
     );
   }
 
   try {
     return JSON.parse(trimmed) as TokenResponse;
   } catch (error) {
-    throw new Error('Сервер токена повернув невалідну відповідь.');
+    throw new Error(translations.errors.tokenInvalidResponse);
   }
 }
 
@@ -202,6 +210,10 @@ export default function App() {
   const search =
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const initialRoom = search.get('room')?.trim() ?? '';
+
+  const [locale, setLocale] = useState<Locale>(() => detectInitialLocale());
+  const translations = useMemo(() => getTranslations(locale), [locale]);
+  const languageOptions = translations.languageOptions;
 
   const [roomName, setRoomName] = useState(() => initialRoom);
   const [isCreator, setIsCreator] = useState(() => !initialRoom);
@@ -254,6 +266,62 @@ export default function App() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
+      window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+    } catch {
+      // ignore persistence issues
+    }
+  }, [locale]);
+
+  useEffect(() => {
+    const ukTranslations = getTranslations('uk');
+    const enTranslations = getTranslations('en');
+
+    const remapValue = (current: string | null, mapping: Record<string, string>): string | null => {
+      if (!current) return current;
+      return mapping[current] ?? current;
+    };
+
+    setStatus((current) =>
+      remapValue(current, {
+        [ukTranslations.status.preparing]: t.status.preparing,
+        [enTranslations.status.preparing]: t.status.preparing,
+        [ukTranslations.status.active]: t.status.active,
+        [enTranslations.status.active]: t.status.active,
+        [ukTranslations.status.disconnected]: t.status.disconnected,
+        [enTranslations.status.disconnected]: t.status.disconnected,
+      }),
+    );
+
+    const errorMapping: Record<string, string> = {
+      [ukTranslations.errors.nameRequired]: t.errors.nameRequired,
+      [enTranslations.errors.nameRequired]: t.errors.nameRequired,
+      [ukTranslations.errors.tokenRequestFailed]: t.errors.tokenRequestFailed,
+      [enTranslations.errors.tokenRequestFailed]: t.errors.tokenRequestFailed,
+      [ukTranslations.errors.tokenHtmlResponse]: t.errors.tokenHtmlResponse,
+      [enTranslations.errors.tokenHtmlResponse]: t.errors.tokenHtmlResponse,
+      [ukTranslations.errors.tokenInvalidResponse]: t.errors.tokenInvalidResponse,
+      [enTranslations.errors.tokenInvalidResponse]: t.errors.tokenInvalidResponse,
+    };
+    setError((current) => remapValue(current, errorMapping));
+
+    const agentMapping: Record<string, string> = {
+      [ukTranslations.errors.agentInviteFailed]: t.errors.agentInviteFailed,
+      [enTranslations.errors.agentInviteFailed]: t.errors.agentInviteFailed,
+      [ukTranslations.errors.agentStatusFailed]: t.errors.agentStatusFailed,
+      [enTranslations.errors.agentStatusFailed]: t.errors.agentStatusFailed,
+      [ukTranslations.errors.invalidApiKey]: t.errors.invalidApiKey,
+      [enTranslations.errors.invalidApiKey]: t.errors.invalidApiKey,
+      [ukTranslations.errors.permissionDenied]: t.errors.permissionDenied,
+      [enTranslations.errors.permissionDenied]: t.errors.permissionDenied,
+      [ukTranslations.errors.agentStartFailed]: t.errors.agentStartFailed,
+      [enTranslations.errors.agentStartFailed]: t.errors.agentStartFailed,
+    };
+    setAgentMessage((current) => remapValue(current, agentMapping));
+  }, [t]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
       const entries = Object.entries(tokenByRoom).filter(([room, token]) => {
         if (!room || typeof token !== 'string' || token.trim() === '') {
           return false;
@@ -288,6 +356,7 @@ export default function App() {
     }
   }, [agentStatus]);
 
+  const t = translations;
   const trimmedRoom = roomName.trim();
   const trimmedParticipantName = participantName.trim();
   const trimmedToken = llmToken.trim();
@@ -339,7 +408,8 @@ export default function App() {
       const errorMessageRaw = typeof data?.error === 'string' ? data.error : null;
       const errorCode = typeof data?.errorCode === 'string' ? data.errorCode : null;
       const errorDetail = typeof data?.errorDetail === 'string' ? data.errorDetail : null;
-      const formattedError = errorMessageRaw || errorCode ? formatAgentErrorMessage(errorCode, errorMessageRaw, errorDetail) : null;
+      const formattedError =
+        errorMessageRaw || errorCode ? formatAgentErrorMessage(t, errorCode, errorMessageRaw, errorDetail) : null;
 
       if (formattedError) {
         if (errorDetail && (!errorMessageRaw || errorDetail !== errorMessageRaw)) {
@@ -372,10 +442,10 @@ export default function App() {
     } catch (error) {
       console.warn('fetchAgentStatus failed', error);
       setAgentStatus('error');
-      setAgentMessage('Не вдалося оновити статус асистента. Перевірте з’єднання і спробуйте знову.');
+      setAgentMessage(t.errors.agentStatusFailed);
       return 'error';
     }
-  }, [trimmedRoom, configuredAgentIdentity]);
+  }, [trimmedRoom, configuredAgentIdentity, t]);
 
   useEffect(() => {
     if (!credentials || !trimmedRoom) {
@@ -421,7 +491,7 @@ export default function App() {
   const canInviteAgent = Boolean(effectiveAgentToken) || isConfiguredRoom || isDemoRoom;
   const readyToConnect = trimmedRoom !== '' && trimmedParticipantName !== '';
 
-  const connectButtonText = connecting ? 'Зачекайте…' : isCreator ? 'Почати трансляцію' : 'Підключитися';
+  const connectButtonText = connecting ? t.actions.wait : isCreator ? t.actions.startBroadcast : t.actions.joinRoom;
   const inviteDisabled = !credentials || !canInviteAgent || agentStatus === 'requesting';
   const pauseDisabled = !credentials || agentStatus === 'requesting';
   const isPausingRequest = pauseRequestedRef.current;
@@ -446,6 +516,10 @@ export default function App() {
     }
   }, [trimmedRoom]);
 
+  const handleLocaleChange = useCallback((value: Locale) => {
+    setLocale(value);
+  }, []);
+
   const handleCreateRoom = useCallback(() => {
     const generated = generateRoomName();
     setRoomName(generated);
@@ -461,7 +535,7 @@ export default function App() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!readyToConnect) {
-      setError('Вкажіть своє ім’я.');
+      setError(t.errors.nameRequired);
       return;
     }
 
@@ -473,10 +547,10 @@ export default function App() {
     try {
       setConnecting(true);
       setError(null);
-      setStatus('Готую з’єднання…');
-      const tokenResp = await requestToken(trimmedRoom, trimmedParticipantName);
+      setStatus(t.status.preparing);
+      const tokenResp = await requestToken(t, trimmedRoom, trimmedParticipantName);
       setCredentials(tokenResp);
-      setStatus('Трансляція активна.');
+      setStatus(t.status.active);
       if (trimmedRoom) {
         setTokenByRoom((prev) => {
           if (!isTokenlessRoom && trimmedToken) {
@@ -497,7 +571,7 @@ export default function App() {
       console.error(err);
       setCredentials(null);
       setStatus(null);
-      setError(err instanceof Error ? err.message : 'Не вдалося отримати токен.');
+      setError(err instanceof Error ? err.message : t.errors.tokenRequestFailed);
     } finally {
       setConnecting(false);
     }
@@ -505,12 +579,12 @@ export default function App() {
 
   const handleDisconnect = useCallback(() => {
     setCredentials(null);
-    setStatus('З’єднання завершено.');
+    setStatus(t.status.disconnected);
     setAgentStatus('idle');
     setAgentMessage(null);
     pauseRequestedRef.current = false;
     void clearAgentDispatch();
-  }, [clearAgentDispatch]);
+  }, [clearAgentDispatch, t.status.disconnected]);
 
   const handleAgentPresenceChange = useCallback((present: boolean, identity?: string | null) => {
     if (present && identity) {
@@ -553,14 +627,14 @@ export default function App() {
         const metadata: AgentMetadata = {
           roomName: trimmedRoom,
           room: trimmedRoom,
-          participantName: trimmedParticipantName || 'Учасник',
+          participantName: trimmedParticipantName || t.participantFallbackName,
           greetingMode: mode,
         };
 
         if (effectiveAgentToken) {
           metadata.gemini_api_key = effectiveAgentToken;
         }
-        const dispatchResult = await ensureAgentDispatch(trimmedRoom, metadata);
+        const dispatchResult = await ensureAgentDispatch(trimmedRoom, metadata, t);
         if (dispatchResult.agentPresent && dispatchResult.active) {
           setAgentStatus('active');
           if (!dispatchResult.dispatch?.agentName && configuredAgentIdentity) {
@@ -573,10 +647,21 @@ export default function App() {
       } catch (error) {
         console.error('ensureAgentActive failed', error);
         setAgentStatus('error');
-        setAgentMessage('Не вдалося запросити ШІ асистента. Перевірте з’єднання або токен і спробуйте ще раз.');
+        setAgentMessage(t.errors.agentInviteFailed);
       }
     },
-    [credentials, trimmedRoom, effectiveAgentToken, isTokenlessRoom, trimmedParticipantName, isCreator, agentStatus, configuredAgentIdentity],
+    [
+      credentials,
+      trimmedRoom,
+      effectiveAgentToken,
+      isTokenlessRoom,
+      trimmedParticipantName,
+      isCreator,
+      agentStatus,
+      configuredAgentIdentity,
+      t,
+      t.errors.agentInviteFailed,
+    ],
   );
 
   const handleRequestAgent = useCallback(() => {
@@ -641,44 +726,44 @@ export default function App() {
         return null;
       }
       return {
-        label: 'Запросити асистента',
-        ariaLabel: '',
+        label: t.agentControl.inviteLabel,
+        ariaLabel: t.agentControl.inviteLabel,
         disabled: inviteDisabled,
         onClick: handleRequestAgent,
-        hint: 'Запросити асистента: додає асистента, який допомагатиме користувачеві.',
+        hint: t.agentControl.inviteHint,
         state: 'invite',
       };
     }
 
     if (agentStatus === 'active') {
       return {
-        label: 'Пауза асистента',
-        ariaLabel: '',
+        label: t.agentControl.pauseLabel,
+        ariaLabel: t.agentControl.pauseLabel,
         disabled: isPausingRequest,
         onClick: handleToggleAgentListening,
-        hint: 'Асистент тимчасово відійде.',
+        hint: t.agentControl.pauseHint,
         state: 'pause',
       };
     }
 
     if (agentStatus === 'paused') {
       return {
-        label: 'Увімкнути асистента',
-        ariaLabel: '',
+        label: t.agentControl.resumeLabel,
+        ariaLabel: t.agentControl.resumeLabel,
         disabled: false,
         onClick: handleToggleAgentListening,
-        hint: 'Асистент повернеться до розмови.',
+        hint: t.agentControl.resumeHint,
         state: 'resume',
       };
     }
 
     // Requesting state
     return {
-      label: '...',
-      ariaLabel: 'Обробка запиту...',
+      label: t.agentControl.processingLabel,
+      ariaLabel: t.agentControl.processingLabel,
       disabled: true,
       onClick: () => { },
-      hint: 'Зачекайте...',
+      hint: t.agentControl.processingLabel,
       state: 'requesting',
     };
   }, [
@@ -688,42 +773,66 @@ export default function App() {
     handleToggleAgentListening,
     inviteDisabled,
     isPausingRequest,
-    pauseDisabled,
+    t.agentControl.inviteHint,
+    t.agentControl.inviteLabel,
+    t.agentControl.pauseHint,
+    t.agentControl.pauseLabel,
+    t.agentControl.processingLabel,
+    t.agentControl.resumeHint,
+    t.agentControl.resumeLabel,
   ]);
 
   const showInviteHint = !canInviteAgent && isCreator;
 
   return (
     <main className={`layout${credentials ? ' layout-room-active' : ''}`} data-lk-theme="default">
+      <div className="language-switch">
+        <label htmlFor="language-select">{t.languageLabel}</label>
+        <select
+          id="language-select"
+          value={locale}
+          onChange={(event) => handleLocaleChange(event.target.value as Locale)}
+          aria-label={t.languageLabel}
+        >
+          {languageOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {!credentials && (
         <section className="card" aria-live="polite">
-          <h1>{participantName ? 'Вітаю' : (!roomName ? 'Створити трансляцію' : 'Вітаю')} {participantName}</h1>
+          <h1>
+            {participantName ? `${t.welcome} ${participantName}` : (!roomName ? t.createBroadcast : t.welcome)}
+          </h1>
 
           {status && <p className="status-message">{status}</p>}
 
           {!roomName ? (
             <>
-              <p>Натисніть нижче, щоб створити нову трансляцію і запросити асистента і інших учасників.</p>
+              <p>{t.createBroadcastHelp}</p>
               <div className="actions">
-                <button type="button" onClick={handleCreateRoom} aria-label="Створити трансляцію">
-                  Створити трансляцію
+                <button type="button" onClick={handleCreateRoom} aria-label={t.actions.createRoom}>
+                  {t.actions.createRoom}
                 </button>
               </div>
             </>
           ) : (
             <>
               <p>
-                Вашу кімнату для зустрічі створено.<br />
+                {t.roomReadyTitle}<br />
                 {trimmedParticipantName
-                  ? 'Натисніть кнопку, щоб підключитися.'
+                  ? t.roomReadyHelpNoName
                   : showLlmTokenField
-                    ? 'Вкажіть своє імʼя, за бажанням додайте LLM токен і натисніть кнопку, щоб підключитися.'
-                    : 'Вкажіть своє імʼя і натисніть кнопку, щоб підключитися.'}
+                    ? t.roomReadyHelpWithToken
+                    : t.roomReadyHelpNoToken}
               </p>
 
               {isCreator && shareLink && (
                 <div className="share-block">
-                  <span>Посилання для асистента:</span>
+                  <span>{t.shareLinkLabel}</span>
                   <div className="share-link" aria-live="polite">
                     {shareLink}
                   </div>
@@ -733,7 +842,7 @@ export default function App() {
               <form className="inputs" onSubmit={handleSubmit}>
                 {!initialParticipantNameFromStorage && (
                   <label>
-                    Ваше імʼя
+                    {t.nameLabel}
                     <input
                       type="text"
                       required
@@ -746,18 +855,17 @@ export default function App() {
                 {showLlmTokenField && (
                   <>
                     <label>
-                      LLM API токен для ШІ асистента (необов’язково)
+                      {t.llmTokenLabel}
                       <input
                         type="text"
                         value={llmToken}
-                        placeholder="Вставте токен вашого асистента"
+                        placeholder={t.llmTokenPlaceholder}
                         onChange={(event) => setLlmToken(event.target.value)}
                         aria-describedby="llm-token-hint"
                       />
                     </label>
                     <small id="llm-token-hint" className="hint">
-                      Токен збережеться в браузері і, якщо введений, передаватиметься асистенту. Без токена працюватиме
-                      звичайна відеозустріч.
+                      {t.llmTokenHint}
                     </small>
                   </>
                 )}
@@ -777,7 +885,7 @@ export default function App() {
       )}
 
       {credentials && (
-        <section className="room-container" aria-label="Кімната відеозвʼязку">
+        <section className="room-container" aria-label={t.conference.roomAriaLabel}>
           <LiveKitRoom
             serverUrl={credentials.serverUrl}
             token={credentials.token}
@@ -804,6 +912,7 @@ export default function App() {
               onAgentPresenceChange={handleAgentPresenceChange}
               agentStatus={agentStatus}
               isDemoRoom={Boolean(demoRoomName && roomName === demoRoomName)}
+              translations={translations}
             />
           </LiveKitRoom>
         </section>

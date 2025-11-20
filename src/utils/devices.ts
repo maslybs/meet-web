@@ -14,10 +14,14 @@ export function isEnvironmentCamera(device: MediaDeviceInfo) {
   return keywords.some((keyword) => normalized.includes(keyword));
 }
 
-export function describeCamera(device: MediaDeviceInfo) {
+export function describeCamera(
+  device: MediaDeviceInfo,
+  primaryLabel = 'Основна камера',
+  otherLabel = 'Інша камера',
+) {
   const label = (device.label ?? '').trim();
   if (label) {
     return label;
   }
-  return isEnvironmentCamera(device) ? 'Основна камера' : 'Інша камера';
+  return isEnvironmentCamera(device) ? primaryLabel : otherLabel;
 }

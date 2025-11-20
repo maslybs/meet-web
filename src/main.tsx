@@ -14,7 +14,7 @@ if (typeof window !== 'undefined') {
       window.localStorage.removeItem(sourceKey);
     }
   } catch (error) {
-    console.warn('Не вдалося синхронізувати імʼя користувача з localStorage.', error);
+    console.warn('Could not sync user name from localStorage.', error);
   }
 }
 

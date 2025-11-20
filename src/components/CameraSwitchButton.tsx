@@ -2,17 +2,20 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Room, RoomEvent } from 'livekit-client';
 import { useRoomContext } from '@livekit/components-react';
 import { describeCamera } from '../utils/devices';
+import type { Translations } from '../i18n';
 
 interface CameraSwitchButtonProps {
   descriptionId: string;
   onAvailabilityChange?: (available: boolean) => void;
+  translations: Translations;
 }
 
-export function CameraSwitchButton({ descriptionId, onAvailabilityChange }: CameraSwitchButtonProps) {
+export function CameraSwitchButton({ descriptionId, onAvailabilityChange, translations }: CameraSwitchButtonProps) {
   const room = useRoomContext();
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [activeDeviceId, setActiveDeviceId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const t = translations.devices;
 
   useEffect(() => {
     if (!room) return;
@@ -42,7 +45,7 @@ export function CameraSwitchButton({ descriptionId, onAvailabilityChange }: Came
           setActiveDeviceId(null);
         }
       } catch (err) {
-        console.warn('Не вдалося отримати перелік камер', err);
+        console.warn('Could not load available cameras', err);
         setDevices([]);
         setActiveDeviceId(null);
       }
@@ -94,18 +97,17 @@ export function CameraSwitchButton({ descriptionId, onAvailabilityChange }: Came
       await room.switchActiveDevice('videoinput', nextDevice.deviceId);
       setActiveDeviceId(nextDevice.deviceId);
     } catch (err) {
-      console.warn('Не вдалося перемкнути камеру', err);
+      console.warn('Could not switch camera', err);
     } finally {
       setPending(false);
     }
   }, [room, devices, activeDeviceId, hasMultipleCameras, pending]);
 
-  const buttonText = pending ? 'Перемикаю…' : 'Перемкнути камеру';
-  const ariaLabel = activeDevice
-    ? `Перемкнути камеру. Використовується ${describeCamera(activeDevice)}`
-    : 'Перемкнути камеру';
+  const buttonText = pending ? t.switchingCamera : t.switchCamera;
+  const cameraName = activeDevice ? describeCamera(activeDevice, t.primaryCamera, t.otherCamera) : '';
+  const ariaLabel = cameraName ? `${t.switchCamera}. ${t.usingCamera} ${cameraName}` : t.switchCamera;
   const disabled = !room || !hasMultipleCameras || pending;
-  const title = activeDevice ? `Зараз використовується: ${describeCamera(activeDevice)}` : undefined;
+  const title = cameraName ? `${t.usingCamera} ${cameraName}` : undefined;
 
   if (!hasMultipleCameras) {
     return null;

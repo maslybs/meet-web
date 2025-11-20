@@ -13,6 +13,7 @@ import { AccessibleTrackToggle } from './AccessibleTrackToggle';
 import { CameraSwitchButton } from './CameraSwitchButton';
 import type { AgentControlConfig, AgentStatus } from '../types/agent';
 import { useConnectionSounds } from '../hooks/useConnectionSounds';
+import type { Translations } from '../i18n';
 
 // Custom hook since it's not exported in this version of components-react
 function useAudioLevel(participant: Participant | null) {
@@ -120,6 +121,7 @@ interface UkrainianConferenceProps {
   onAgentPresenceChange: (present: boolean, agentId?: string | null) => void;
   agentStatus: AgentStatus;
   isDemoRoom: boolean;
+  translations: Translations;
 }
 
 function UkrainianConference({
@@ -132,7 +134,9 @@ function UkrainianConference({
   onAgentPresenceChange,
   agentStatus,
   isDemoRoom,
+  translations,
 }: UkrainianConferenceProps) {
+  const t = translations;
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
@@ -356,7 +360,7 @@ function UkrainianConference({
       <div className="ua-header" aria-hidden="true">
         <div className="ua-room-info">
           {isDemoRoom ? (
-            <h2>Демо кімната</h2>
+            <h2>{t.conference.demoRoomLabel}</h2>
           ) : null}
           {agentMessage && (
             <div className="agent-status-message">
@@ -398,7 +402,9 @@ function UkrainianConference({
           <div className="control-group">
             <AccessibleTrackToggle
               source={Track.Source.Microphone}
-              baseLabel="Мікрофон"
+              baseLabel={t.devices.microphone}
+              labelOn={`${t.devices.microphone}. ${t.toggle.on}`}
+              labelOff={`${t.devices.microphone}. ${t.toggle.off}`}
               aria-describedby=""
             >
               {(enabled) => enabled ? <MicOnIcon /> : <MicOffIcon />}
@@ -406,7 +412,9 @@ function UkrainianConference({
 
             <AccessibleTrackToggle
               source={Track.Source.Camera}
-              baseLabel="Камера"
+              baseLabel={t.devices.camera}
+              labelOn={`${t.devices.camera}. ${t.toggle.on}`}
+              labelOff={`${t.devices.camera}. ${t.toggle.off}`}
               aria-describedby=""
               onChange={setCanSwitchCamera}
             >
@@ -414,7 +422,7 @@ function UkrainianConference({
             </AccessibleTrackToggle>
 
             {canSwitchCamera && (
-              <CameraSwitchButton descriptionId={switchHintId} />
+              <CameraSwitchButton descriptionId={switchHintId} translations={translations} />
             )}
           </div>
 
@@ -452,9 +460,10 @@ function UkrainianConference({
             <button
               type="button"
               className="ua-button danger"
-              aria-label="Завершити"
+              aria-label={t.conference.leaveLabel}
               aria-describedby=""
               onClick={handleDisconnect}
+              title={t.conference.leaveLabel}
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M16 12H22M22 12L19 9M22 12L19 15M12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -470,6 +479,7 @@ function UkrainianConference({
           <AgentPresenceVisual
             state={agentStatus}
             participant={agentParticipant}
+            translations={translations}
           />
         )}
       </div>
@@ -480,9 +490,10 @@ function UkrainianConference({
 interface AgentPresenceVisualProps {
   state: AgentStatus;
   participant: Participant | null;
+  translations: Translations;
 }
 
-function AgentPresenceVisual({ state, participant }: AgentPresenceVisualProps) {
+function AgentPresenceVisual({ state, participant, translations }: AgentPresenceVisualProps) {
   // Cast to any because standard types might expect TrackReference, but newer SDKs handle Participant or we handle nulls safely
   const audioLevel = useAudioLevel(participant as any);
 
@@ -501,7 +512,7 @@ function AgentPresenceVisual({ state, participant }: AgentPresenceVisualProps) {
       data-agent-state={state}
       data-agent-connecting={isConnecting}
       data-is-speaking={isSpeaking}
-      title={isConnecting ? 'Асистент підключається...' : 'Асистент активний'}
+      title={isConnecting ? translations.conference.agentConnectingTitle : translations.conference.agentActiveTitle}
       style={{
         '--agent-scale': scale,
       } as React.CSSProperties}

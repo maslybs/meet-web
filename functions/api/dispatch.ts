@@ -15,6 +15,61 @@ interface RequestPayload {
   metadata?: string;
 }
 
+function normalizeRoom(room?: string | null): string {
+  return room?.trim() ?? '';
+}
+
+function parseDispatchMetadata(raw?: string): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'string') {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      return parsed as Record<string, unknown>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function extractGeminiToken(metadata?: Record<string, unknown> | null): string {
+  const raw = metadata?.['gemini_api_key'];
+  if (typeof raw === 'string') {
+    return raw.trim();
+  }
+  return '';
+}
+
+function getTokenlessRooms(env: LiveKitAgentEnv) {
+  const defaultRoom = normalizeRoom(env.VITE_DEFAULT_ROOM ?? env.VOICE_AGENT_DEFAULT_ROOM ?? null);
+  const demoRoom = normalizeRoom(env.VITE_DEMO_ROOM ?? env.VOICE_AGENT_DEMO_ROOM ?? null);
+  return { defaultRoom, demoRoom };
+}
+
+function isTokenOptionalRoom(env: LiveKitAgentEnv, room?: string | null) {
+  const normalizedRoom = normalizeRoom(room);
+  if (!normalizedRoom) {
+    return false;
+  }
+
+  const { defaultRoom, demoRoom } = getTokenlessRooms(env);
+
+  if (defaultRoom && normalizedRoom === defaultRoom) {
+    return true;
+  }
+  if (demoRoom && normalizedRoom === demoRoom) {
+    return true;
+  }
+  // Allow explicit "demo-room" fallback like the frontend
+  if (normalizedRoom === 'demo-room') {
+    return true;
+  }
+
+  return false;
+}
+
 async function readPayload(request: Request): Promise<RequestPayload> {
   if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'DELETE') {
     const url = new URL(request.url);
@@ -236,10 +291,14 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
   }
 
   const agentName = getConfiguredAgentName(env)!;
-  const { room, metadata } = await readPayload(request);
+  const { room, metadata: rawMetadata } = await readPayload(request);
   if (!room) {
     return new Response('Missing required room parameter', { status: 400 });
   }
+
+  const parsedMetadata = parseDispatchMetadata(rawMetadata);
+  const geminiApiKey = extractGeminiToken(parsedMetadata);
+  const tokenOptionalRoom = isTokenOptionalRoom(env, room);
 
   try {
     if (method === 'GET') {
@@ -267,6 +326,10 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
     }
 
     if (method === 'POST') {
+      if (!tokenOptionalRoom && !geminiApiKey) {
+        return new Response('LLM токен обов’язковий для цієї кімнати.', { status: 400 });
+      }
+
       const context = await buildDispatchContext(env, room);
       const allDispatches = await listDispatches(context, room);
 
@@ -312,7 +375,7 @@ export const onRequest: PagesFunction<LiveKitAgentEnv> = async ({ request, env }
           .map((dispatch) => deleteAgentDispatch(context, room, dispatch.id as string)),
       );
 
-      const dispatch = await createAgentDispatch(context, room, agentName, metadata);
+      const dispatch = await createAgentDispatch(context, room, agentName, rawMetadata);
       return Response.json({ status: 'ok', dispatch, active: true, agentPresent: false });
     }
 

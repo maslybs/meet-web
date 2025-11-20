@@ -17,11 +17,12 @@ export const AccessibleTrackToggle = forwardRef<HTMLButtonElement, AccessibleTra
     const { buttonProps, enabled } = useTrackToggle(rest);
     const providedLabel =
       (rest as { ['aria-label']?: string })['aria-label'] ?? undefined;
+    const basePrefix = baseLabel ? `${baseLabel}. ` : '';
     const computedLabel =
       providedLabel ??
       (enabled
-        ? labelOn ?? `${baseLabel}. Зараз увімкнено`
-        : labelOff ?? `${baseLabel}. Зараз вимкнено`);
+        ? labelOn ?? `${basePrefix}On`
+        : labelOff ?? `${basePrefix}Off`);
     
     const mergedProps = {
       ...buttonProps,
