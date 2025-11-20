@@ -236,14 +236,26 @@ function matchLocale(value?: string | null): Locale {
 }
 
 export function detectInitialLocale(): Locale {
-  if (typeof window !== 'undefined') {
-    const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
-    if (stored) {
-      return matchLocale(stored);
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+      if (stored) {
+        return matchLocale(stored);
+      }
     }
+  } catch (e) {
+    console.warn('Failed to access localStorage for locale:', e);
   }
-  const browser = typeof navigator !== 'undefined' ? navigator.language : '';
-  return matchLocale(browser);
+
+  try {
+    if (typeof navigator !== 'undefined' && navigator.language) {
+      return matchLocale(navigator.language);
+    }
+  } catch (e) {
+    console.warn('Failed to access navigator.language:', e);
+  }
+
+  return 'uk';
 }
 
 export function getTranslations(locale: Locale): Translations {

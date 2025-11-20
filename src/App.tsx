@@ -21,6 +21,7 @@ interface AgentMetadata {
   gemini_api_key?: string;
   multi_participant?: boolean;
   greetingMode?: 'invite' | 'resume';
+  language?: string;
 }
 
 const envValues = import.meta.env as Record<string, string | undefined>;
@@ -206,6 +207,26 @@ async function requestToken(translations: Translations, room: string, name: stri
   }
 }
 
+
+function LanguageSwitcher({ locale, onLocaleChange }: { locale: Locale; onLocaleChange: (l: Locale) => void }) {
+  const toggle = () => onLocaleChange(locale === 'uk' ? 'en' : 'uk');
+  return (
+    <button
+      type="button"
+      className="language-toggle"
+      onClick={toggle}
+      aria-hidden="true"
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="2" y1="12" x2="22" y2="12" />
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+      </svg>
+      <span className="lang-code">{locale.toUpperCase()}</span>
+    </button>
+  );
+}
+
 export default function App() {
   const search =
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
@@ -213,6 +234,12 @@ export default function App() {
 
   const [locale, setLocale] = useState<Locale>(() => detectInitialLocale());
   const translations = useMemo(() => getTranslations(locale), [locale]);
+
+  if (!translations) {
+    return null;
+  }
+
+  const t = translations;
   const languageOptions = translations.languageOptions;
 
   const [roomName, setRoomName] = useState(() => initialRoom);
@@ -356,7 +383,7 @@ export default function App() {
     }
   }, [agentStatus]);
 
-  const t = translations;
+
   const trimmedRoom = roomName.trim();
   const trimmedParticipantName = participantName.trim();
   const trimmedToken = llmToken.trim();
@@ -629,6 +656,7 @@ export default function App() {
           room: trimmedRoom,
           participantName: trimmedParticipantName || t.participantFallbackName,
           greetingMode: mode,
+          language: locale,
         };
 
         if (effectiveAgentToken) {
@@ -786,24 +814,13 @@ export default function App() {
 
   return (
     <main className={`layout${credentials ? ' layout-room-active' : ''}`} data-lk-theme="default">
-      <div className="language-switch">
-        <label htmlFor="language-select">{t.languageLabel}</label>
-        <select
-          id="language-select"
-          value={locale}
-          onChange={(event) => handleLocaleChange(event.target.value as Locale)}
-          aria-label={t.languageLabel}
-        >
-          {languageOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
+
 
       {!credentials && (
         <section className="card" aria-live="polite">
+          <div className="card-header-actions">
+            <LanguageSwitcher locale={locale} onLocaleChange={handleLocaleChange} />
+          </div>
           <h1>
             {participantName ? `${t.welcome} ${participantName}` : (!roomName ? t.createBroadcast : t.welcome)}
           </h1>
@@ -913,6 +930,8 @@ export default function App() {
               agentStatus={agentStatus}
               isDemoRoom={Boolean(demoRoomName && roomName === demoRoomName)}
               translations={translations}
+              locale={locale}
+              onLocaleChange={handleLocaleChange}
             />
           </LiveKitRoom>
         </section>

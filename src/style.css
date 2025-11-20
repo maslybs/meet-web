@@ -103,23 +103,44 @@ button:focus-visible {
 }
 
 .language-switch {
-  width: 100%;
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 0.5rem;
-  color: #e2e8f0;
-  font-weight: 600;
+  display: none;
 }
 
-.language-switch select {
-  border-radius: 0.5rem;
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  background: rgba(15, 23, 42, 0.6);
-  color: #e2e8f0;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.95rem;
+.card-header-actions {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  z-index: 10;
 }
+
+.language-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 2rem;
+  padding: 0.4rem 0.8rem;
+  color: #e2e8f0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.language-toggle:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.language-toggle svg {
+  opacity: 0.8;
+}
+
+.ua-language-float {
+  pointer-events: auto;
+}
+
 
 .layout.layout-room-active {
   align-items: flex-start;

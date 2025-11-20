@@ -122,6 +122,8 @@ interface UkrainianConferenceProps {
   agentStatus: AgentStatus;
   isDemoRoom: boolean;
   translations: Translations;
+  locale: 'uk' | 'en';
+  onLocaleChange: (locale: 'uk' | 'en') => void;
 }
 
 function UkrainianConference({
@@ -135,6 +137,8 @@ function UkrainianConference({
   agentStatus,
   isDemoRoom,
   translations,
+  locale,
+  onLocaleChange,
 }: UkrainianConferenceProps) {
   const t = translations;
   const tracks = useTracks(
@@ -367,6 +371,21 @@ function UkrainianConference({
               {agentMessage}
             </div>
           )}
+        </div>
+        <div className="ua-language-float">
+          <button
+            type="button"
+            className="language-toggle"
+            onClick={() => onLocaleChange(locale === 'uk' ? 'en' : 'uk')}
+            aria-hidden="true"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+            </svg>
+            <span className="lang-code">{locale.toUpperCase()}</span>
+          </button>
         </div>
       </div>
 
