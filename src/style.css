@@ -386,8 +386,7 @@ textarea:focus {
 .local-participant-container--solo {
   inset: 0;
   width: 100%;
-  height: 80%;
-  bottom: auto;
+  height: 100%;
   aspect-ratio: unset;
   border-radius: 0;
   z-index: 0;

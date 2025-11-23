@@ -359,22 +359,6 @@ function UkrainianConference({
     }, 200);
   };
 
-  const [controlsAnnouncement, setControlsAnnouncement] = useState('');
-
-  useEffect(() => {
-    const labels = [
-      t.devices.microphone,
-      t.devices.camera,
-      agentControl?.label,
-      t.conference.leaveLabel,
-    ]
-      .map((label) => label?.trim())
-      .filter(Boolean)
-      .join(', ');
-
-    setControlsAnnouncement(labels ? `${labels}.` : '');
-  }, [agentControl?.label, t]);
-
   return (
     <div className="conference-layout">
       <div className="ua-header" aria-hidden="true">
@@ -433,11 +417,6 @@ function UkrainianConference({
 
       {/* Footer Area with Controls and Agent Visual */}
       <div className="ua-footer">
-        {controlsAnnouncement ? (
-          <div className="sr-only" role="status" aria-live="polite">
-            {controlsAnnouncement}
-          </div>
-        ) : null}
         <div className="ua-controls">
 
           <div className="control-group">
