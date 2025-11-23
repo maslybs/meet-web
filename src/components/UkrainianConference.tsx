@@ -430,12 +430,7 @@ function UkrainianConference({
 
       {/* Footer Area with Controls and Agent Visual */}
       <div className="ua-footer">
-        <div 
-          className="ua-controls"
-          role="region"
-          aria-label={t.conference.roomAriaLabel}
-          aria-live="polite"
-        >
+        <div className="ua-controls">
 
           <div className="control-group">
             <AccessibleTrackToggle
