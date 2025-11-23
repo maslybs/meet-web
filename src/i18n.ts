@@ -58,6 +58,7 @@ export interface Translations {
     agentConnectingTitle: string;
     agentActiveTitle: string;
     leaveLabel: string;
+    controlsAnnouncementPrefix: string;
     roomAriaLabel: string;
   };
   devices: {
@@ -135,6 +136,7 @@ const uk: Translations = {
     agentConnectingTitle: 'Асистент підключається...',
     agentActiveTitle: 'Асистент активний',
     leaveLabel: 'Завершити',
+    controlsAnnouncementPrefix: 'Доступні кнопки керування:',
     roomAriaLabel: 'Кімната відеозвʼязку',
   },
   devices: {
@@ -212,6 +214,7 @@ const en: Translations = {
     agentConnectingTitle: 'Assistant connecting...',
     agentActiveTitle: 'Assistant active',
     leaveLabel: 'Leave',
+    controlsAnnouncementPrefix: 'Available controls:',
     roomAriaLabel: 'Video call room',
   },
   devices: {

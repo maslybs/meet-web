@@ -359,18 +359,21 @@ function UkrainianConference({
     }, 200);
   };
 
-  const micButtonRef = useRef<HTMLButtonElement>(null);
+  const [controlsAnnouncement, setControlsAnnouncement] = useState('');
 
   useEffect(() => {
-    // Focus the mic button when the component mounts to ensure screen reader lands on controls
-    // This addresses the issue where buttons appear but aren't announced immediately
-    const timer = setTimeout(() => {
-      if (micButtonRef.current) {
-        micButtonRef.current.focus();
-      }
-    }, 100); // Small delay to ensure DOM is ready and screen reader catches up
-    return () => clearTimeout(timer);
-  }, []);
+    const labels = [
+      t.devices.microphone,
+      t.devices.camera,
+      agentControl?.label,
+      t.conference.leaveLabel,
+    ]
+      .map((label) => label?.trim())
+      .filter(Boolean)
+      .join(', ');
+
+    setControlsAnnouncement(labels ? `${t.conference.controlsAnnouncementPrefix} ${labels}.` : '');
+  }, [agentControl?.label, t]);
 
   return (
     <div className="conference-layout">
@@ -430,16 +433,19 @@ function UkrainianConference({
 
       {/* Footer Area with Controls and Agent Visual */}
       <div className="ua-footer">
+        {controlsAnnouncement ? (
+          <div className="sr-only" role="status" aria-live="polite">
+            {controlsAnnouncement}
+          </div>
+        ) : null}
         <div className="ua-controls">
 
           <div className="control-group">
             <AccessibleTrackToggle
-              ref={micButtonRef}
               source={Track.Source.Microphone}
               baseLabel={t.devices.microphone}
               labelOn={`${t.devices.microphone}. ${t.toggle.on}`}
               labelOff={`${t.devices.microphone}. ${t.toggle.off}`}
-              aria-describedby=""
             >
               {(enabled) => enabled ? <MicOnIcon /> : <MicOffIcon />}
             </AccessibleTrackToggle>
@@ -449,7 +455,6 @@ function UkrainianConference({
               baseLabel={t.devices.camera}
               labelOn={`${t.devices.camera}. ${t.toggle.on}`}
               labelOff={`${t.devices.camera}. ${t.toggle.off}`}
-              aria-describedby=""
               onChange={setCanSwitchCamera}
             >
               {(enabled) => enabled ? <CamOnIcon /> : <CamOffIcon />}
@@ -473,7 +478,6 @@ function UkrainianConference({
                 aria-label={agentControl.ariaLabel}
                 title={agentControl.label}
                 data-agent-state={agentControl.state}
-                aria-describedby=""
               >
                 {agentControl.state === 'pause' ? (
                   <PauseIcon />
@@ -495,7 +499,6 @@ function UkrainianConference({
               type="button"
               className="ua-button danger"
               aria-label={t.conference.leaveLabel}
-              aria-describedby=""
               onClick={handleDisconnect}
               title={t.conference.leaveLabel}
             >
