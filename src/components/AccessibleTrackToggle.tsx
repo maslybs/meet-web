@@ -15,6 +15,8 @@ export interface AccessibleTrackToggleProps extends LiveKitTrackToggleProps {
 export const AccessibleTrackToggle = forwardRef<HTMLButtonElement, AccessibleTrackToggleProps>(
   ({ baseLabel, labelOn, labelOff, children, ...rest }, ref) => {
     const { buttonProps, enabled } = useTrackToggle(rest);
+    const { disabled, onClick, ...otherButtonProps } = buttonProps;
+
     const providedLabel =
       (rest as { ['aria-label']?: string })['aria-label'] ?? undefined;
     const basePrefix = baseLabel ? `${baseLabel}. ` : '';
@@ -23,14 +25,24 @@ export const AccessibleTrackToggle = forwardRef<HTMLButtonElement, AccessibleTra
       (enabled
         ? labelOn ?? `${basePrefix}On`
         : labelOff ?? `${basePrefix}Off`);
-    
+
+    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (disabled) {
+        e.preventDefault();
+        return;
+      }
+      onClick?.(e);
+    };
+
     const mergedProps = {
-      ...buttonProps,
+      ...otherButtonProps,
+      onClick: handleClick,
       'aria-label': computedLabel,
       'aria-pressed': enabled,
+      'aria-disabled': disabled,
       title: computedLabel,
       type: 'button' as const,
-      className: `ua-button icon-button ${enabled ? 'active' : 'inactive'}`,
+      className: `ua-button icon-button ${enabled ? 'active' : 'inactive'} ${disabled ? 'disabled' : ''}`,
     };
 
     return (
