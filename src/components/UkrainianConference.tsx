@@ -359,6 +359,19 @@ function UkrainianConference({
     }, 200);
   };
 
+  const micButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    // Focus the mic button when the component mounts to ensure screen reader lands on controls
+    // This addresses the issue where buttons appear but aren't announced immediately
+    const timer = setTimeout(() => {
+      if (micButtonRef.current) {
+        micButtonRef.current.focus();
+      }
+    }, 100); // Small delay to ensure DOM is ready and screen reader catches up
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <div className="conference-layout">
       <div className="ua-header" aria-hidden="true">
@@ -378,6 +391,7 @@ function UkrainianConference({
             className="language-toggle"
             onClick={() => onLocaleChange(locale === 'uk' ? 'en' : 'uk')}
             aria-hidden="true"
+            tabIndex={-1}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
@@ -416,10 +430,16 @@ function UkrainianConference({
 
       {/* Footer Area with Controls and Agent Visual */}
       <div className="ua-footer">
-        <div className="ua-controls">
+        <div 
+          className="ua-controls"
+          role="region"
+          aria-label={t.conference.roomAriaLabel}
+          aria-live="polite"
+        >
 
           <div className="control-group">
             <AccessibleTrackToggle
+              ref={micButtonRef}
               source={Track.Source.Microphone}
               baseLabel={t.devices.microphone}
               labelOn={`${t.devices.microphone}. ${t.toggle.on}`}
