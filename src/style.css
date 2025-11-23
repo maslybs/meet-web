@@ -386,7 +386,8 @@ textarea:focus {
 .local-participant-container--solo {
   inset: 0;
   width: 100%;
-  height: 100%;
+  height: 80%;
+  bottom: auto;
   aspect-ratio: unset;
   border-radius: 0;
   z-index: 0;
@@ -703,15 +704,15 @@ textarea:focus {
     bottom: 1.5rem;
     flex-direction: row;
     align-items: flex-end;
-  justify-content: center;
-  gap: 0;
-  padding: 0 1.5rem;
-  pointer-events: auto;
-}
+    justify-content: center;
+    gap: 0;
+    padding: 0 1.5rem;
+    pointer-events: auto;
+  }
 
-.ua-controls {
-  position: absolute;
-  bottom: 0;
+  .ua-controls {
+    position: absolute;
+    bottom: 0;
     left: 0;
     right: 0;
     width: auto;
@@ -721,15 +722,15 @@ textarea:focus {
     border: none;
     box-shadow: none;
     backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  justify-content: space-between;
-  padding: 0 2rem;
-  /* Increased margin from edges */
-  pointer-events: auto;
-  align-items: flex-end;
-  box-sizing: border-box;
-  /* Ensure padding is included */
-}
+    -webkit-backdrop-filter: none;
+    justify-content: space-between;
+    padding: 0 2rem;
+    /* Increased margin from edges */
+    pointer-events: auto;
+    align-items: flex-end;
+    box-sizing: border-box;
+    /* Ensure padding is included */
+  }
 
   .control-group {
     flex-direction: column;
