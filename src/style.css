@@ -701,12 +701,12 @@ textarea:focus {
 
 @media (max-width: 1024px) {
   .ua-footer {
-    bottom: 1.5rem;
+    bottom: 5rem;
     flex-direction: row;
     align-items: flex-end;
     justify-content: center;
     gap: 0;
-    padding: 0 1.5rem;
+    padding: 0 2rem;
     pointer-events: auto;
   }
 
@@ -735,7 +735,7 @@ textarea:focus {
   .control-group {
     flex-direction: column;
     pointer-events: auto;
-    gap: 1rem;
+    gap: 3rem;
     background: rgba(15, 23, 42, 0.65);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);

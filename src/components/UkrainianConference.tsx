@@ -372,7 +372,7 @@ function UkrainianConference({
       .filter(Boolean)
       .join(', ');
 
-    setControlsAnnouncement(labels ? `${t.conference.controlsAnnouncementPrefix} ${labels}.` : '');
+    setControlsAnnouncement(labels ? `${labels}.` : '');
   }, [agentControl?.label, t]);
 
   return (
