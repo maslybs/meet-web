@@ -13,6 +13,10 @@ type RadioCommand = {
   pageUrl?: string;
   volume?: number;
   volume_percent?: number;
+  playback_rate?: number;
+  rate?: number;
+  seconds?: number;
+  percent?: number;
   metadata?: Record<string, unknown>;
 };
 
@@ -22,6 +26,7 @@ type BrowserRadioState = {
   audioUrl: string;
   pageUrl: string;
   volume: number;
+  playbackRate: number;
   error: string;
 };
 
@@ -76,6 +81,7 @@ export function BrowserRadioPlayer() {
     audioUrl: '',
     pageUrl: '',
     volume: 1,
+    playbackRate: 1,
     error: '',
   });
 
@@ -126,6 +132,9 @@ export function BrowserRadioPlayer() {
         page_url: state.pageUrl,
         volume: state.volume,
         volume_percent: Math.round(state.volume * 100),
+        playback_rate: state.playbackRate,
+        current_time: audioRef.current?.currentTime || 0,
+        duration: Number.isFinite(audioRef.current?.duration || NaN) ? audioRef.current?.duration : 0,
         ...extra,
       });
       room.localParticipant.publishData(new TextEncoder().encode(payload), {
@@ -137,6 +146,42 @@ export function BrowserRadioPlayer() {
     }
   }, [room, state]);
 
+  const applyPlaybackRate = useCallback((rate: number) => {
+    const safeRate = Math.max(0.25, Math.min(3, Number.isFinite(rate) ? rate : 1));
+    const audio = audioRef.current;
+    if (audio) {
+      audio.playbackRate = safeRate;
+      audio.defaultPlaybackRate = safeRate;
+    }
+    setState((current) => ({ ...current, playbackRate: safeRate }));
+    publishStatus({ playback_rate: safeRate });
+  }, [publishStatus]);
+
+  const seekBySeconds = useCallback((seconds: number) => {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.duration)) return;
+    const nextTime = Math.max(0, Math.min(audio.duration, audio.currentTime + seconds));
+    audio.currentTime = nextTime;
+    publishStatus({ current_time: nextTime, duration: audio.duration });
+  }, [publishStatus]);
+
+  const seekToSeconds = useCallback((seconds: number) => {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.duration)) return;
+    const nextTime = Math.max(0, Math.min(audio.duration, seconds));
+    audio.currentTime = nextTime;
+    publishStatus({ current_time: nextTime, duration: audio.duration });
+  }, [publishStatus]);
+
+  const seekToPercent = useCallback((percent: number) => {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.duration)) return;
+    const normalized = percent > 1 ? percent / 100 : percent;
+    const nextTime = Math.max(0, Math.min(audio.duration, audio.duration * normalized));
+    audio.currentTime = nextTime;
+    publishStatus({ current_time: nextTime, duration: audio.duration, percent: normalized });
+  }, [publishStatus]);
+
   const playAudio = useCallback(async (command: RadioCommand) => {
     const audioUrl = (command.audio_url || command.audioUrl || '').trim();
     if (!audioUrl) return;
@@ -147,8 +192,9 @@ export function BrowserRadioPlayer() {
     const title = (command.title || 'Аудіо').trim();
     const pageUrl = (command.page_url || command.pageUrl || '').trim();
     const volume = normalizeIncomingVolume(command, state.volume || 1);
+    const playbackRate = Math.max(0.25, Math.min(3, command.playback_rate || command.rate || state.playbackRate || 1));
 
-    setState({ status: 'loading', title, audioUrl, pageUrl, volume, error: '' });
+    setState({ status: 'loading', title, audioUrl, pageUrl, volume, playbackRate, error: '' });
 
     audio.pause();
     const playbackUrl = proxiedAudioUrl(audioUrl);
@@ -160,6 +206,8 @@ export function BrowserRadioPlayer() {
       audio.crossOrigin = null;
     }
     audio.preload = 'auto';
+    audio.playbackRate = playbackRate;
+    audio.defaultPlaybackRate = playbackRate;
     applyVolume(volume);
 
     try {
@@ -168,12 +216,12 @@ export function BrowserRadioPlayer() {
         await graph?.ctx.resume();
       }
       await audio.play();
-      setState({ status: 'playing', title, audioUrl, pageUrl, volume, error: '' });
-      publishStatus({ status: 'playing', title, audio_url: audioUrl, page_url: pageUrl, volume });
+      setState({ status: 'playing', title, audioUrl, pageUrl, volume, playbackRate, error: '' });
+      publishStatus({ status: 'playing', title, audio_url: audioUrl, page_url: pageUrl, volume, playback_rate: playbackRate });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Не вдалося запустити аудіо у браузері.';
       console.warn('Browser radio playback failed', error);
-      setState({ status: 'error', title, audioUrl, pageUrl, volume, error: message });
+      setState({ status: 'error', title, audioUrl, pageUrl, volume, playbackRate, error: message });
       publishStatus({ status: 'error', title, audio_url: audioUrl, error: message });
     }
   }, [applyVolume, ensureAudioGraph, publishStatus, state.volume]);
@@ -237,6 +285,14 @@ export function BrowserRadioPlayer() {
         void resumeAudio();
       } else if (type === 'radio.volume') {
         applyVolume(normalizeIncomingVolume(command, state.volume || 1));
+      } else if (type === 'radio.rate') {
+        applyPlaybackRate(command.playback_rate || command.rate || 1);
+      } else if (type === 'radio.seek.by') {
+        seekBySeconds(Number(command.seconds || 0));
+      } else if (type === 'radio.seek.to') {
+        seekToSeconds(Number(command.seconds || 0));
+      } else if (type === 'radio.seek.percent') {
+        seekToPercent(Number(command.percent || 0));
       } else if (type === 'radio.status.request') {
         publishStatus();
       }
@@ -246,7 +302,7 @@ export function BrowserRadioPlayer() {
     return () => {
       room.off(RoomEvent.DataReceived, handleData as any);
     };
-  }, [applyVolume, pauseAudio, playAudio, publishStatus, resumeAudio, room, state.volume, stopAudio]);
+  }, [applyPlaybackRate, applyVolume, pauseAudio, playAudio, publishStatus, resumeAudio, room, seekBySeconds, seekToPercent, seekToSeconds, state.volume, stopAudio]);
 
   useEffect(() => {
     const audio = audioRef.current;
