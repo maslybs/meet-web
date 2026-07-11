@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRoomContext } from '@livekit/components-react';
 import { RoomEvent } from 'livekit-client';
 
@@ -280,43 +280,7 @@ export function BrowserRadioPlayer() {
     };
   }, [publishStatus, state.status]);
 
-  const visible = state.status !== 'idle' && (state.title || state.audioUrl || state.error);
-  const volumeLabel = useMemo(() => `${Math.round(state.volume * 100)}%`, [state.volume]);
-
-  return (
-    <div className={`browser-radio-player ${visible ? 'browser-radio-player--visible' : ''}`} aria-live="polite">
-      <audio ref={audioRef} />
-      {visible && (
-        <div className="browser-radio-player__panel">
-          <div className="browser-radio-player__meta">
-            <span className="browser-radio-player__eyebrow">Відтворення у браузері</span>
-            <strong>{state.title || 'Аудіо'}</strong>
-            {state.status === 'loading' && <span>Завантаження…</span>}
-            {state.error && <span className="browser-radio-player__error">{state.error}</span>}
-          </div>
-          <div className="browser-radio-player__controls">
-            {state.status === 'playing' ? (
-              <button type="button" onClick={pauseAudio} aria-label="Пауза аудіо">Пауза</button>
-            ) : (
-              <button type="button" onClick={() => void resumeAudio()} disabled={!state.audioUrl} aria-label="Відтворити аудіо">Грати</button>
-            )}
-            <button type="button" onClick={stopAudio} aria-label="Зупинити аудіо">Стоп</button>
-            <label>
-              <span>Гучність {volumeLabel}</span>
-              <input
-                type="range"
-                min="0"
-                max="3"
-                step="0.05"
-                value={Math.min(3, state.volume)}
-                onChange={(event) => applyVolume(Number(event.target.value))}
-              />
-            </label>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return <audio ref={audioRef} preload="none" style={{ display: 'none' }} />;
 }
 
 export default BrowserRadioPlayer;
