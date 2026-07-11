@@ -55,6 +55,15 @@ function proxiedAudioUrl(audioUrl: string) {
   }
 }
 
+function canUseWebAudioGain(src: string) {
+  try {
+    const parsed = new URL(src, window.location.href);
+    return parsed.origin === window.location.origin || parsed.pathname.startsWith('/api/audio-proxy');
+  } catch {
+    return false;
+  }
+}
+
 export function BrowserRadioPlayer() {
   const room = useRoomContext();
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -92,12 +101,16 @@ export function BrowserRadioPlayer() {
     const safeVolume = Math.max(0, Math.min(10, volume));
     const audio = audioRef.current;
     if (audio) {
-      // Keep element volume at 100%; use WebAudio gain for >100% amplification.
       audio.volume = clampVolume(Math.min(1, safeVolume));
     }
-    const graph = ensureAudioGraph();
-    if (graph?.gain) {
-      graph.gain.gain.value = safeVolume;
+    // WebAudio gain is only safe for same-origin/proxied audio. External ukr.radio MP3
+    // files do not expose CORS headers, so connecting them to AudioContext can make
+    // browsers reject playback with “no supported source”.
+    if (audio && audio.src && canUseWebAudioGain(audio.src)) {
+      const graph = ensureAudioGraph();
+      if (graph?.gain) {
+        graph.gain.gain.value = safeVolume;
+      }
     }
     setState((current) => ({ ...current, volume: safeVolume }));
   }, [ensureAudioGraph]);
@@ -138,14 +151,22 @@ export function BrowserRadioPlayer() {
     setState({ status: 'loading', title, audioUrl, pageUrl, volume, error: '' });
 
     audio.pause();
-    audio.src = proxiedAudioUrl(audioUrl);
-    audio.crossOrigin = 'anonymous';
+    const playbackUrl = proxiedAudioUrl(audioUrl);
+    audio.src = playbackUrl;
+    if (canUseWebAudioGain(playbackUrl)) {
+      audio.crossOrigin = 'anonymous';
+    } else {
+      audio.removeAttribute('crossorigin');
+      audio.crossOrigin = null;
+    }
     audio.preload = 'auto';
     applyVolume(volume);
 
     try {
-      const graph = ensureAudioGraph();
-      await graph?.ctx.resume();
+      if (canUseWebAudioGain(playbackUrl)) {
+        const graph = ensureAudioGraph();
+        await graph?.ctx.resume();
+      }
       await audio.play();
       setState({ status: 'playing', title, audioUrl, pageUrl, volume, error: '' });
       publishStatus({ status: 'playing', title, audio_url: audioUrl, page_url: pageUrl, volume });
