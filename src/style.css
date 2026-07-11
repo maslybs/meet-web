@@ -858,3 +858,104 @@ textarea:focus {
   /* Ensure text alignment if needed */
   text-align: right;
 }
+
+.browser-radio-player {
+  width: min(560px, calc(100vw - 32px));
+  pointer-events: auto;
+}
+
+.browser-radio-player:not(.browser-radio-player--visible) {
+  display: none;
+}
+
+.browser-radio-player__panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  background: rgba(10, 12, 18, 0.84);
+  color: #fff;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(14px);
+}
+
+.browser-radio-player__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.browser-radio-player__meta strong {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.95rem;
+}
+
+.browser-radio-player__eyebrow {
+  font-size: 0.72rem;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.browser-radio-player__error {
+  color: #ffb4b4;
+  font-size: 0.78rem;
+}
+
+.browser-radio-player__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.browser-radio-player__controls button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  cursor: pointer;
+}
+
+.browser-radio-player__controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.browser-radio-player__controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  opacity: 0.92;
+}
+
+.browser-radio-player__controls input[type='range'] {
+  width: 110px;
+}
+
+@media (max-width: 720px) {
+  .browser-radio-player__panel {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .browser-radio-player__controls {
+    justify-content: flex-start;
+  }
+
+  .browser-radio-player__meta strong {
+    max-width: 100%;
+  }
+}

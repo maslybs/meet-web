@@ -11,6 +11,7 @@ import { RoomEvent, Track } from 'livekit-client';
 import type { Participant } from 'livekit-client';
 import { AccessibleTrackToggle } from './AccessibleTrackToggle';
 import { CameraSwitchButton } from './CameraSwitchButton';
+import BrowserRadioPlayer from './BrowserRadioPlayer';
 import type { AgentControlConfig, AgentStatus } from '../types/agent';
 import { useConnectionSounds } from '../hooks/useConnectionSounds';
 import type { Translations } from '../i18n';
@@ -488,6 +489,7 @@ function UkrainianConference({
           </div>
 
           <RoomAudioRenderer />
+          <BrowserRadioPlayer />
         </div>
 
         {/* Agent Visual (Orb) - Placed to the right of controls */}
